@@ -1,0 +1,49 @@
+# Webapp: Byggprojekt-mäklare
+
+Jag vill bygga en webapp som fungerar som en “Byggprojekt-mäklare”.
+
+Appen ska ha följande funktioner:
+
+## 1. Inloggning & autentisering
+- Användarregistrering och inloggning via e-post.
+- Supabase Auth ska användas för autentisering.
+- Användaren `mikael.persson@constoab.se` är förvald admin.
+- Admins kan lägga till fler adminanvändare via e-post.
+- Endast admins kan:
+  - Skapa nya projekt
+  - Redigera eller ta bort befintliga projekt
+
+## 2. Dashboard för inloggade användare
+- Efter inloggning visas en dashboard.
+- Alla användare kan se projekt där de är inbjudna eller har lämnat offert.
+- Admins ser alla projekt och har redigeringsåtkomst.
+
+## 3. Projektdata (endast för admins)
+- Admins kan skapa och hantera projekt (titel, beskrivning, kategori etc.).
+- Projekten sparas i Supabase Database (PostgreSQL).
+- Full CRUD (create, read, update, delete) är tillgängligt för admins.
+
+## 4. Ladda upp & spara PDF-filer (alla användare)
+- Alla användare kan ladda upp PDF-offerter till ett projekt.
+- Vid uppladdning måste följande anges:
+  - Entreprenörsroll (t.ex. El, VS, Ventilation, Mark, Bygg, Styr)
+  - Offertsumma i SEK
+- Filen lagras i Supabase Storage.
+- Metadata (filnamn, entreprenörstyp, offertsumma, projekt-ID, användar-ID) lagras i databasen.
+- PDF:er ska kunna förhandsgranskas eller laddas ner direkt från appen.
+
+## 5. Design & UI
+- Enkel, professionell och responsiv design.
+- Använd gärna TailwindCSS.
+- Färgtema: ljus bakgrund, grå detaljer, blå accentfärg (`#0000ff`).
+
+## 6. Teknisk stack
+- React eller Next.js som frontend
+- Supabase för:
+  - Auth (e-postinloggning & adminhantering)
+  - PostgreSQL-databas
+  - Storage (filer)
+
+## Övrigt
+- Appen ska byggas som ett MVP för att kunna testas med riktiga användare.
+- Strukturera koden tydligt och hållbar för vidareutveckling.

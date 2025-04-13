@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Lägg till eventuella globala egna stilar här under */
+/* Body-stilar sätts nu i layout.tsx */
