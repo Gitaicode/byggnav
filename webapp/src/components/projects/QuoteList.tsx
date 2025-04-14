@@ -56,33 +56,51 @@ export default function QuoteList({ quotes: initialQuotes, error, currentUserId,
   return (
     <div className="space-y-3">
       {initialQuotes.map((quote) => {
-        // Avgör om Ta bort-knappen ska visas
+        // Avgör om Ta bort-knappen ska visas (endast för admins eller den som laddat upp)
         const canDelete = isAdmin || quote.user_id === currentUserId;
-        
+        // Avgör om användaren ska se full information (admin eller egen offert)
+        const canSeeFullInfo = isAdmin || quote.user_id === currentUserId;
+
         return (
           <div key={quote.id} className="border rounded-md p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white shadow-sm">
-            <div className="flex-grow">
-              <p className="font-semibold text-base">{quote.contractor_type}</p>
-              <p className="text-sm text-gray-600">Summa: {currencyFormatter.format(quote.amount)}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Uppladdad av: {quote.profiles?.email || 'Okänd'} den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
-              </p>
-            </div>
-            <div className="flex-shrink-0 flex items-center">
-              <button 
-                onClick={() => handleDownload(quote.file_path, quote.file_name)}
-                className="text-sm text-blue-600 hover:text-blue-800 hover:underline px-3 py-1 rounded border border-blue-200 hover:bg-blue-50"
-              >
-                Ladda ner ({quote.file_name})
-              </button>
-              {/* Visa Ta bort-knapp om användaren får */}
-              {canDelete && (
-                <DeleteQuoteButton 
-                    quoteId={quote.id} 
-                    filePath={quote.file_path} 
-                />
-              )}
-            </div>
+            {canSeeFullInfo ? (
+              // Fullständig vy för administratörer och egna offerter
+              <>
+                <div className="flex-grow">
+                  <p className="font-semibold text-base">{quote.contractor_type}</p>
+                  <p className="text-sm text-gray-600">Summa: {currencyFormatter.format(quote.amount)}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Uppladdad av: {quote.profiles?.email || 'Okänd'} den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
+                  </p>
+                </div>
+                <div className="flex-shrink-0 flex items-center space-x-2"> {/* Added space-x-2 for spacing */}
+                  <button
+                    onClick={() => handleDownload(quote.file_path, quote.file_name)}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline px-3 py-1 rounded border border-blue-200 hover:bg-blue-50"
+                  >
+                    Ladda ner ({quote.file_name})
+                  </button>
+                  {/* Visa Ta bort-knapp om användaren får */}
+                  {canDelete && (
+                    <DeleteQuoteButton
+                        quoteId={quote.id}
+                        filePath={quote.file_path}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              // Begränsad vy för andra användares offerter
+              <>
+                <div className="flex-grow">
+                  <p className="font-semibold text-base">{quote.contractor_type}</p>
+                   <p className="text-xs text-gray-500 mt-1">
+                     Uppladdad den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
+                   </p>
+                </div>
+                {/* Ingen summa, ingen uppladdare, ingen nedladdningsknapp, ingen raderaknapp */}
+              </>
+            )}
           </div>
         );
       })}

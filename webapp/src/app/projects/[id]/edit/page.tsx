@@ -7,22 +7,26 @@ import { z } from 'zod';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 
-// Zod schema (samma som för new, men alla fält relevanta för uppdatering)
+// Zod schema (uppdaterat med nya fält)
 const projectSchema = z.object({
   title: z.string().min(3, 'Titel måste vara minst 3 tecken').max(100, 'Titel får vara max 100 tecken'),
-  description: z.string().max(500, 'Beskrivning får vara max 500 tecken').optional().nullable(), // Tillåt null från databas
+  description: z.string().max(500, 'Beskrivning får vara max 500 tecken').optional().nullable(),
   category: z.string().max(50, 'Kategori får vara max 50 tecken').optional().nullable(),
-  status: z.string().min(1, 'Status måste anges'), // Status ska kunna redigeras
+  status: z.string().min(1, 'Status måste anges'),
+  client_name: z.string().max(100, 'Beställare får vara max 100 tecken').optional().nullable(), // Nytt fält
+  tender_document_url: z.string().url('Ange en giltig URL').optional().or(z.literal('')).nullable(), // Nytt fält, tillåt tom sträng
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
 
-// Definiera en standardstruktur för formuläret
+// Definiera en standardstruktur för formuläret (uppdaterat)
 const defaultFormValues: ProjectFormData = {
     title: '',
     description: '',
     category: '',
-    status: 'new', // Rimligt standardvärde
+    status: 'new',
+    client_name: '', // Nytt fält
+    tender_document_url: '', // Nytt fält
 };
 
 export default function EditProjectPage() {
@@ -40,35 +44,39 @@ export default function EditProjectPage() {
     formState: { errors },
   } = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
-    defaultValues: async (): Promise<ProjectFormData> => { // Tydliggör returtyp
+    defaultValues: async (): Promise<ProjectFormData> => {
       setInitialLoading(true);
       try {
         const { data, error: fetchError } = await supabase
           .from('projects')
-          .select('title, description, category, status')
+          // Uppdaterad select för att inkludera nya fält
+          .select('title, description, category, status, client_name, tender_document_url')
           .eq('id', projectId)
           .single();
-        
+
         if (fetchError || !data) {
           throw new Error(fetchError?.message || 'Kunde inte hämta projektdata.');
         }
         setInitialLoading(false);
+        // Returnera data inklusive nya fält
         return {
             title: data.title,
-            description: data.description ?? '', // Säkerställ sträng
-            category: data.category ?? '',     // Säkerställ sträng
+            description: data.description ?? '',
+            category: data.category ?? '',
             status: data.status,
+            client_name: data.client_name ?? '', // Nytt fält
+            tender_document_url: data.tender_document_url ?? '', // Nytt fält
         };
       } catch (err: any) {
         console.error("Fetch default values error:", err);
         setError('Kunde inte ladda projektdata för redigering.');
         setInitialLoading(false);
-        return defaultFormValues; // Returnera standardvärden vid fel
+        return defaultFormValues;
       }
     }
   });
 
-  // Använd SubmitHandler för att typa onSubmit korrekt
+  // Uppdaterad onSubmit för att inkludera nya fält
   const onSubmit: SubmitHandler<ProjectFormData> = async (data) => {
     setLoading(true);
     setError(null);
@@ -81,9 +89,11 @@ export default function EditProjectPage() {
           description: data.description,
           category: data.category,
           status: data.status,
+          client_name: data.client_name, // Spara nytt fält
+          tender_document_url: data.tender_document_url, // Spara nytt fält
         })
         .eq('id', projectId)
-        .select(); // Lägg till select() för att RLS ska köras korrekt vid update
+        .select();
 
       if (updateError) {
         // Kontrollera om felet beror på RLS (t.ex. inte admin)
@@ -141,6 +151,13 @@ export default function EditProjectPage() {
           {errors.category && <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>}
         </div>
 
+        {/* Beställare (Nytt fält) */}
+        <div>
+          <label htmlFor="client_name" className="block text-sm font-medium text-gray-700">Beställare</label>
+          <input id="client_name" type="text" {...register('client_name')} className={`mt-1 block w-full px-3 py-2 border ${errors.client_name ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`} />
+          {errors.client_name && <p className="mt-1 text-sm text-red-600">{errors.client_name.message}</p>}
+        </div>
+
         {/* Status */} 
         <div>
           <label htmlFor="status" className="block text-sm font-medium text-gray-700">
@@ -158,6 +175,13 @@ export default function EditProjectPage() {
             <option value="archived">Arkiverat</option>
           </select>
           {errors.status && <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>}
+        </div>
+
+        {/* Länk till förfrågningsunderlag (Nytt fält) */}
+        <div>
+          <label htmlFor="tender_document_url" className="block text-sm font-medium text-gray-700">Länk till förfrågningsunderlag</label>
+          <input id="tender_document_url" type="url" {...register('tender_document_url')} placeholder="https://..." className={`mt-1 block w-full px-3 py-2 border ${errors.tender_document_url ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`} />
+          {errors.tender_document_url && <p className="mt-1 text-sm text-red-600">{errors.tender_document_url.message}</p>}
         </div>
 
         {error && <p className="text-sm text-red-600 text-center">{error}</p>}

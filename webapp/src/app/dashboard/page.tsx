@@ -41,16 +41,16 @@ export default function DashboardPage() {
         setProfile(profileData); // Nu matchar typen Profile
         const isAdmin = profileData.is_admin;
 
-        // 3. Hämta projekt (inkludera alla fält definierade i Project-typen)
+        // 3. Hämta projekt (inkludera nya fält)
         const { data: projectData, error: projectsError } = await supabase
           .from('projects')
-          .select('id, title, description, status, created_at, updated_at, category, created_by') // Hämta alla fält
+          .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url')
           .order('created_at', { ascending: false });
 
         if (projectsError) {
           throw new Error(projectsError.message || 'Kunde inte hämta projekt.');
         }
-        setProjects(projectData || []); // Nu matchar typen Project[]
+        setProjects((projectData as Project[]) || []); // Nu matchar typen Project[]
 
       } catch (err: any) {
           console.error("Fel vid datahämtning på dashboard:", err);
@@ -138,7 +138,7 @@ export default function DashboardPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((project) => (
-            <div key={project.id} className="border rounded-lg p-4 shadow hover:shadow-md transition-shadow bg-white">
+            <div key={project.id} className="border rounded-lg p-4 shadow hover:shadow-md transition-shadow bg-white flex flex-col">
               <h3 className="text-lg font-semibold mb-2 truncate">
                   <Link href={`/projects/${project.id}`} className="hover:text-blue-600 hover:underline">
                       {project.title}
@@ -147,6 +147,27 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-600 mb-3 truncate">
                 {project.description || 'Ingen beskrivning'}
               </p>
+              
+              {project.client_name && (
+                <p className="text-xs text-gray-500 mb-1 truncate">
+                  Beställare: <span className="font-medium">{project.client_name}</span>
+                </p>
+              )}
+              {project.tender_document_url && (
+                <div className="text-xs text-gray-500 mb-3 truncate">
+                  <span>Förfrågningsunderlag: </span>
+                  <a 
+                    href={project.tender_document_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Länk
+                  </a>
+                </div>
+              )}
+
               <div className="flex justify-between items-center text-xs text-gray-500">
                 <span>Status: <span className="font-medium capitalize">{project.status}</span></span>
                 <span>{new Date(project.created_at).toLocaleDateString('sv-SE')}</span>

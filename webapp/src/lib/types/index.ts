@@ -17,6 +17,8 @@ export interface Project {
   category: string | null;
   status: string;
   created_by: string | null;
+  client_name: string | null;
+  tender_document_url: string | null;
   // Eventuellt lägga till relation till profiles här om det behövs
 }
 

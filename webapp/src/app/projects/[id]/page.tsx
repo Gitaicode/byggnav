@@ -3,10 +3,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import DeleteProjectButton from '@/components/projects/DeleteProjectButton';
-import UploadQuoteForm from '@/components/projects/UploadQuoteForm';
 import { Quote } from '@/lib/types'; // Importera Quote-typen
 import QuoteList from '@/components/projects/QuoteList'; // Importera listkomponenten (skapas strax)
 import { cookies } from 'next/headers'; // Importera cookies
+import { PlusIcon } from '@heroicons/react/24/outline';
 
 // Props-typ för sidan, Next.js skickar med params för dynamiska routes
 interface ProjectDetailsPageProps {
@@ -52,12 +52,13 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
   const isAdmin = profile.is_admin;
   const currentUserId = session.user.id; // Hämta ID för den inloggade användaren
 
-  // Hämta projektdata
+  // Hämta projektdata (inklusive nya fält)
   const { data: project, error } = await supabase
     .from('projects')
-    .select('*') // Hämta alla kolumner för detaljsidan
+    // Explicit select för tydlighet och för att garantera att nya fält hämtas
+    .select('*, client_name, tender_document_url') 
     .eq('id', id)
-    .single(); // Förväntar oss endast ett projekt
+    .single();
 
   // Om projektet inte hittades (RLS kan också blockera om användaren inte har access)
   if (error || !project) {
@@ -100,7 +101,7 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
         )}
       </div>
 
-      {/* Projektinformation */}
+      {/* Projektinformation (uppdaterad) */}
       <div className="bg-white p-6 rounded shadow-md mb-8 space-y-4">
         <div>
           <h2 className="text-lg font-semibold mb-1">Beskrivning</h2>
@@ -108,7 +109,32 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
             {project.description || 'Ingen beskrivning angiven.'}
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        
+        {/* Visa beställare om det finns */}
+        {project.client_name && (
+            <div>
+                 <h2 className="text-lg font-semibold mb-1">Beställare</h2>
+                 <p className="text-gray-700">{project.client_name}</p>
+            </div>
+        )}
+        
+        {/* Visa länk till förfrågningsunderlag om det finns */}
+        {project.tender_document_url && (
+          <div>
+            <h2 className="text-lg font-semibold mb-1">Förfrågningsunderlag</h2>
+            <a 
+              href={project.tender_document_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+            >
+              {project.tender_document_url}
+            </a>
+          </div>
+        )}
+
+        {/* Grid för övrig info */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm pt-4 border-t border-gray-200 mt-4">
             <div>
                 <span className="font-semibold">Kategori:</span>
                 <span className="ml-2 text-gray-700">{project.category || '-'}</span>
@@ -122,16 +148,18 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
                 <span className="ml-2 text-gray-700">{new Date(project.created_at).toLocaleDateString('sv-SE')}</span>
             </div>
         </div>
-         {/* Lägg till info om skapare? project.created_by */} 
       </div>
 
       {/* Sektion för offerter */}
       <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Offerter</h2>
-        
-        {/* Formulär för uppladdning */} 
-        <div className="mb-6">
-             <UploadQuoteForm projectId={project.id} />
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">Offerter</h2>
+          <Link href={`/projects/${id}/quotes/new`}>
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+              <PlusIcon className="h-5 w-5 mr-1" />
+              Ladda upp ny offert
+            </button>
+          </Link>
         </div>
 
         {/* Skicka med currentUserId och isAdmin till QuoteList */}
