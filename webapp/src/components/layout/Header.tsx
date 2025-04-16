@@ -53,8 +53,8 @@ export default function Header() {
   return (
     <header className="bg-gray-100 p-4 shadow-md sticky top-0 z-50"> {/* Gör headern sticky */}
       <div className="container mx-auto flex justify-between items-center">
-        <Link href={session ? "/dashboard" : "/"} className="text-xl font-semibold text-gray-800 hover:text-blue-700">
-          Byggprojekt-mäklare
+        <Link href={session ? "/dashboard" : "/"} className="text-2xl font-bold text-gray-800 hover:text-blue-700">
+          ByggNav
         </Link>
         <nav>
           {loading ? (
@@ -63,7 +63,7 @@ export default function Header() {
             <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600 hidden sm:inline">{session.user.email}</span>
                 <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800 hover:underline">
-                  Dashboard
+                  Projekt
                 </Link>
                 <button 
                     onClick={handleLogout}

@@ -1,35 +1,53 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation'; // För att kunna uppdatera sidan
 
-// Zod schema för offerformuläret
+// Alternativ för Entreprenörstyp
+const contractorTypes = [
+  'Avfallshantering',
+  'Betong',
+  'Brandtätning & brandskydd',
+  'El',
+  'Golv',
+  'Hiss',
+  'Kök',
+  'Kran',
+  'Lås',
+  'Mark',
+  'Måleri',
+  'Mur & Puts',
+  'Plåt',
+  'Rivning & sanering',
+  'Bygg',
+  'Solceller',
+  'Städning',
+  'Stommontering',
+  'Ställning',
+  'Styr',
+  'Tak',
+  'Ventilation',
+  'VS',
+  'Övrigt'
+] as const; // Viktigt med 'as const' för z.enum
+
+// Zod schema för offerformuläret - Uppdaterat
 const quoteSchema = z.object({
-  contractor_type: z.string().min(1, 'Entreprenörstyp måste anges').max(50, 'Max 50 tecken'),
-  amount: z.coerce.number({ // Använd coerce för att konvertera från input (som är sträng)
-      invalid_type_error: 'Offertsumma måste vara ett giltigt nummer',
-      required_error: 'Offertsumma måste anges'
-    })
-    .positive('Offertsumman måste vara större än 0')
-    .finite('Ogiltigt nummer'),
-  quote_file: z.any() // Börja med any för SSR-kompatibilitet
-    // Refine körs på klienten där FileList finns
-    .refine(
-      (files) => files instanceof FileList && files.length > 0, 
-      'Du måste välja en fil.'
-    )
-    .refine(
-      (files) => files instanceof FileList && files?.[0]?.type === 'application/pdf', 
-      'Endast PDF-filer är tillåtna.'
-    )
-    .refine(
-      (files) => files instanceof FileList && files?.[0]?.size <= 5 * 1024 * 1024, 
-      `Filen får vara max 5MB.`
-    )
+  // Flyttad ordning matchar formuläret
+  quote_file: z.any()
+    .refine(files => files instanceof FileList && files.length > 0, 'Du måste välja en fil.')
+    .refine(files => files instanceof FileList && files?.[0]?.type === 'application/pdf', 'Endast PDF-filer är tillåtna.')
+    .refine(files => files instanceof FileList && files?.[0]?.size <= 5 * 1024 * 1024, `Filen får vara max 5MB.`),
+  amount: z.coerce.number({ invalid_type_error: 'Offertsumma måste vara ett giltigt nummer', required_error: 'Offertsumma måste anges' })
+    .positive('Offertsumman måste vara större än 0').finite('Ogiltigt nummer'),
+  contractor_type: z.enum(contractorTypes, { errorMap: () => ({ message: 'Välj en giltig entreprenörstyp' }) }),
+  company_name: z.string().optional().nullable(), // Nytt fält, valfritt
+  phone_number: z.string().optional().nullable(), // Nytt fält, valfritt
+  email: z.string().email('Ange en giltig e-postadress') // Nytt fält, obligatorisk email
 });
 
 type QuoteFormData = z.infer<typeof quoteSchema>;
@@ -42,15 +60,33 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>(''); // State för användarens email
   const router = useRouter();
+
+  // Hämta användarens email när komponenten laddas
+  useEffect(() => {
+    const fetchUserEmail = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        setUserEmail(user.email);
+        // Sätt standardvärde i formuläret när email har hämtats
+        setValue('email', user.email);
+      }
+    };
+    fetchUserEmail();
+  }, []); // Kör bara en gång vid mount
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue, // Importera setValue för att sätta email
     formState: { errors },
   } = useForm<QuoteFormData>({
     resolver: zodResolver(quoteSchema),
+    defaultValues: {
+      email: '' // Initialt tomt, sätts via useEffect
+    }
   });
 
   const onSubmit: SubmitHandler<QuoteFormData> = async (data) => {
@@ -59,59 +95,51 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
     setSuccessMessage(null);
 
     const file = data.quote_file[0];
-    
-    // Sanera filnamnet: ersätt mellanslag och parenteser med _, ta bort andra osäkra tecken (förenklad)
-    const sanitizedOriginalName = file.name
-      .replace(/\s+/g, '_') // Ersätt mellanslag med _
-      .replace(/\(|\)/g, '_') // Ersätt parenteser med _
-      .replace(/[^a-zA-Z0-9_\-\.]/g, ''); // Ta bort allt som inte är bokstav, siffra, _, -, .
-
-    const fileName = `${Date.now()}_${sanitizedOriginalName}`; // Använd det sanerade namnet
-    const filePath = `${projectId}/${fileName}`; // Sökväg i bucketen
+    const sanitizedOriginalName = file.name.replace(/\s+/g, '_').replace(/\(|\)/g, '_').replace(/[^a-zA-Z0-9_\-\.]/g, '');
+    const fileName = `${Date.now()}_${sanitizedOriginalName}`;
+    const filePath = `${projectId}/${fileName}`;
 
     try {
-      // 1. Ladda upp filen till Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('quotes') // Namnet på din bucket
-        .upload(filePath, file);
+      // 1. Ladda upp filen
+      const { error: uploadError } = await supabase.storage.from('quotes').upload(filePath, file);
+      if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
 
-      if (uploadError) {
-        console.error('Storage Upload Error:', uploadError); // Behåll detaljerad loggning
-        // Kasta ett fel med det specifika meddelandet från Supabase
-        throw new Error(`Storage Error: ${uploadError.message}`); 
-      }
+      // 2. Hämta användar-ID (behövs fortfarande för user_id)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Ingen användare inloggad');
 
-      // 2. Hämta användar-ID
-       const { data: { user } } = await supabase.auth.getUser();
-       if (!user) throw new Error('Ingen användare inloggad');
-
-      // 3. Spara metadata i databasen ('quotes'-tabellen)
+      // 3. Spara metadata i databasen - Uppdaterad
       const { error: insertError } = await supabase
         .from('quotes')
         .insert({
           project_id: projectId,
-          user_id: user.id, // Den som laddade upp
+          user_id: user.id,
           contractor_type: data.contractor_type,
           amount: data.amount,
-          file_path: filePath, // Sökvägen från Storage
-          file_name: file.name, // Originalfilnamnet
+          file_path: filePath,
+          file_name: file.name,
+          company_name: data.company_name || null, // Spara nya fält
+          phone_number: data.phone_number || null,
+          email: data.email, // Spara email
         });
 
       if (insertError) {
-        console.error('DB Insert Error:', insertError)
-        // Försök ta bort den uppladdade filen om DB-insert misslyckas?
+        console.error('DB Insert Error:', insertError);
         await supabase.storage.from('quotes').remove([filePath]);
         throw new Error('Kunde inte spara offertinformationen i databasen.');
       }
 
-      // Allt gick bra!
       setSuccessMessage('Offerten har laddats upp!');
-      reset(); // Rensa formuläret
-      // Uppdatera sidan för att visa den nya offerten i listan (kräver att listan implementeras)
-      router.refresh(); 
+      reset();
+      setUserEmail(''); // Rensa email state? Eller behåll?
+      const fetchedUser = await supabase.auth.getUser(); // Hämta igen för att sätta default på nytt
+      if (fetchedUser.data.user?.email) {
+          setUserEmail(fetchedUser.data.user.email);
+          setValue('email', fetchedUser.data.user.email);
+      }
+      router.refresh();
 
     } catch (err: any) {
-      // Visa felmeddelandet som kastades (antingen från Storage eller DB)
       setError(err.message || 'Ett oväntat fel inträffade.');
     } finally {
       setLoading(false);
@@ -122,21 +150,24 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 bg-white p-6 rounded shadow-md border">
       <h3 className="text-lg font-semibold border-b pb-2 mb-4">Ladda upp ny offert</h3>
       
-      {/* Entreprenörstyp */} 
+      {/* 1. Filuppladdning (Flyttad högst upp) */}
       <div>
-        <label htmlFor="contractor_type" className="block text-sm font-medium text-gray-700">
-            Entreprenörstyp (t.ex. El, VS, Bygg) <span className="text-red-600">*</span>
+        <label htmlFor="quote_file" className="block text-sm font-medium text-gray-700">
+            PDF-fil (max 5MB) <span className="text-red-600">*</span>
         </label>
         <input
-          id="contractor_type"
-          type="text"
-          {...register('contractor_type')}
-          className={`mt-1 block w-full px-3 py-2 border ${errors.contractor_type ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
-        />
-        {errors.contractor_type && <p className="... text-red-600">{errors.contractor_type.message}</p>}
+          id="quote_file"
+          type="file"
+          accept=".pdf"
+          {...register('quote_file')}
+          className={`mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${errors.quote_file ? 'border border-red-500 rounded-md p-1' : ''}`}
+         />
+         {errors.quote_file?.message && typeof errors.quote_file.message === 'string' && (
+             <p className="mt-1 text-sm text-red-600">{errors.quote_file.message}</p>
+         )}
       </div>
 
-      {/* Offertsumma */} 
+      {/* 2. Offertsumma (Flyttad hit) */}
       <div>
         <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
             Offertsumma (SEK) <span className="text-red-600">*</span>
@@ -148,38 +179,75 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
           {...register('amount')}
           className={`mt-1 block w-full px-3 py-2 border ${errors.amount ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
         />
-        {errors.amount && <p className="... text-red-600">{errors.amount.message}</p>}
+        {errors.amount && <p className="mt-1 text-sm text-red-600">{errors.amount.message}</p>}
       </div>
 
-      {/* Filuppladdning */} 
+      {/* 3. Entreprenörstyp (Ändrad till Select) */}
       <div>
-        <label htmlFor="quote_file" className="block text-sm font-medium text-gray-700">
-            PDF-fil (max 5MB) <span className="text-red-600">*</span>
+        <label htmlFor="contractor_type" className="block text-sm font-medium text-gray-700">
+            Entreprenörstyp <span className="text-red-600">*</span>
+        </label>
+        <select
+          id="contractor_type"
+          {...register('contractor_type')}
+          className={`mt-1 block w-full px-3 py-2 border ${errors.contractor_type ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white`}
+          defaultValue="" // Lägg till ett tomt default value
+        >
+            <option value="" disabled>Välj typ...</option>
+            {contractorTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+            ))}
+        </select>
+        {errors.contractor_type && <p className="mt-1 text-sm text-red-600">{errors.contractor_type.message}</p>}
+      </div>
+
+      {/* 4. Företagsnamn (Nytt fält) */}
+      <div>
+        <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">
+            Företagsnamn
         </label>
         <input
-          id="quote_file"
-          type="file"
-          accept=".pdf"
-          {...register('quote_file')}
-          className={`mt-1 block w-full text-sm text-gray-500 
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-md file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-100 file:text-blue-700
-            hover:file:bg-blue-200
-            focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-            ${errors.quote_file ? 'border border-red-500 rounded-md p-1' : ''}`}
-         />
-         {/* Rendera bara felmeddelandet om det finns och är en sträng */}
-         {errors.quote_file?.message && typeof errors.quote_file.message === 'string' && (
-             <p className="mt-1 text-sm text-red-600">{errors.quote_file.message}</p>
-         )}
+          id="company_name"
+          type="text"
+          {...register('company_name')}
+          className={`mt-1 block w-full px-3 py-2 border ${errors.company_name ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
+        />
+        {errors.company_name && <p className="mt-1 text-sm text-red-600">{errors.company_name.message}</p>}
+      </div>
+
+      {/* 5. Telefonnummer (Nytt fält) */}
+      <div>
+        <label htmlFor="phone_number" className="block text-sm font-medium text-gray-700">
+            Telefonnummer
+        </label>
+        <input
+          id="phone_number"
+          type="tel" // Använd type="tel"
+          {...register('phone_number')}
+          className={`mt-1 block w-full px-3 py-2 border ${errors.phone_number ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
+        />
+        {errors.phone_number && <p className="mt-1 text-sm text-red-600">{errors.phone_number.message}</p>}
+      </div>
+
+      {/* 6. Email (Nytt fält, auto-ifyllt) */}
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            E-post (kontaktperson) <span className="text-red-600">*</span>
+        </label>
+        <input
+          id="email"
+          type="email"
+          {...register('email')} 
+          defaultValue={userEmail} // Sätt defaultValue från state
+          readOnly // Gör fältet skrivskyddat
+          className={`mt-1 block w-full px-3 py-2 border ${errors.email ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-100 cursor-not-allowed`}
+        />
+        {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
       </div>
 
       {error && <p className="text-sm text-red-600 text-center">{error}</p>}
       {successMessage && <p className="text-sm text-green-600 text-center">{successMessage}</p>}
 
-      {/* Knapp */} 
       <div className="flex justify-end">
           <button
             type="submit"

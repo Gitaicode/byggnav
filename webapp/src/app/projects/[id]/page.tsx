@@ -56,7 +56,7 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
   const { data: project, error } = await supabase
     .from('projects')
     // Explicit select för tydlighet och för att garantera att nya fält hämtas
-    .select('*, client_name, tender_document_url') 
+    .select('*, client_name, tender_document_url, supplementary_tender_document_url') 
     .eq('id', id)
     .single();
 
@@ -81,6 +81,46 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
   // Typa resultatet
   const typedQuotes: Quote[] = quotes || [];
 
+  // ----- NYTT: Hämta åtkomstförfrågningar -----
+  let myAccessRequests: any[] = [];
+  let requestsForMyQuotes: any[] = [];
+  const quoteIds = typedQuotes.map(q => q.id);
+
+  if (quoteIds.length > 0) {
+    // Förfrågningar gjorda AV mig för dessa offerter
+    const { data: myReqData, error: myReqError } = await supabase
+      .from('quote_access_requests')
+      .select('*')
+      .eq('requester_user_id', currentUserId)
+      .in('quote_id', quoteIds);
+
+    if (myReqError) {
+      console.error("Error fetching my access requests:", myReqError.message);
+      // Fortsätt ändå, men logga felet
+    } else {
+      myAccessRequests = myReqData || [];
+    }
+
+    // Förfrågningar gjorda AV ANDRA för offerter uppladdade AV mig
+    const { data: otherReqData, error: otherReqError } = await supabase
+      .from('quote_access_requests')
+      .select('*, requester:requester_user_id(email)') // Hämta frågeställarens e-post
+      .eq('uploader_user_id', currentUserId)
+      .in('quote_id', quoteIds);
+    
+    if (otherReqError) {
+      console.error("Error fetching requests for my quotes:", otherReqError.message);
+       // Fortsätt ändå, men logga felet
+    } else {
+      // Korrigera typningen här baserat på select-satsen
+      requestsForMyQuotes = otherReqData?.map(req => ({
+          ...req,
+          requester_email: req.requester?.email // Platta ut e-posten
+      })) || [];
+    }
+  }
+  // ----- SLUT: Hämta åtkomstförfrågningar -----
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* Titel och eventuella admin-knappar (redigera/ta bort) */}
@@ -103,13 +143,6 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
 
       {/* Projektinformation (uppdaterad) */}
       <div className="bg-white p-6 rounded shadow-md mb-8 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold mb-1">Beskrivning</h2>
-          <p className="text-gray-700 whitespace-pre-wrap">
-            {project.description || 'Ingen beskrivning angiven.'}
-          </p>
-        </div>
-        
         {/* Visa beställare om det finns */}
         {project.client_name && (
             <div>
@@ -133,21 +166,124 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
           </div>
         )}
 
-        {/* Grid för övrig info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm pt-4 border-t border-gray-200 mt-4">
-            <div>
-                <span className="font-semibold">Kategori:</span>
-                <span className="ml-2 text-gray-700">{project.category || '-'}</span>
-            </div>
-            <div>
-                <span className="font-semibold">Status:</span>
-                <span className="ml-2 text-gray-700 capitalize">{project.status}</span>
-            </div>
-            <div>
-                <span className="font-semibold">Skapad:</span>
-                <span className="ml-2 text-gray-700">{new Date(project.created_at).toLocaleDateString('sv-SE')}</span>
-            </div>
+        {/* Visa kompletterande förfrågningsunderlag om det finns */}
+        {project.supplementary_tender_document_url && (
+          <div>
+            <h2 className="text-lg font-semibold mb-1">Kompletterande förfrågningsunderlag</h2>
+            <a 
+              href={project.supplementary_tender_document_url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+            >
+              {project.supplementary_tender_document_url}
+            </a>
+          </div>
+        )}
+
+        {/* ----- Huvudgrid för de flesta fält ----- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-y-2 gap-x-6 pt-4 border-t border-gray-200 mt-4 text-sm">
+           {/* Flytta in och styla om befintliga och tidigare tillagda fält */}
+           {project.category && (
+              <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                <span className="font-semibold text-gray-700">Kategori:</span>
+                <span className="text-gray-900">{project.category}</span>
+              </div>
+           )}
+           {project.status && (
+              <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                 <span className="font-semibold text-gray-700">Status:</span>
+                 <span className="text-gray-900 capitalize">{project.status}</span>
+              </div>
+           )}
+           {project.project_type && (
+              <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                 <span className="font-semibold text-gray-700">Projekttyp:</span>
+                 <span className="text-gray-900 capitalize">{project.project_type}</span>
+              </div>
+           )}
+           {project.area && (
+              <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                 <span className="font-semibold text-gray-700">Område:</span>
+                 <span className="text-gray-900">{project.area}</span>
+              </div>
+            )}
+           {project.environmental_class && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Miljöklassning:</span>
+                     <span className="text-gray-900">{project.environmental_class}</span>
+                </div>
+           )}
+           {project.gross_floor_area != null && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">BTA:</span>
+                     <span className="text-gray-900">{project.gross_floor_area} m²</span>
+                </div>
+           )}
+            {project.building_area != null && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Byggarea:</span>
+                     <span className="text-gray-900">{project.building_area} m²</span>
+                </div>
+           )}
+            {project.num_apartments != null && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Antal lägenheter:</span>
+                     <span className="text-gray-900">{project.num_apartments}</span>
+                </div>
+           )}
+           {project.num_floors != null && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Antal våningar:</span>
+                     <span className="text-gray-900">{project.num_floors}</span>
+                </div>
+            )}
+            {project.client_category && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Beställarkategori:</span>
+                     <span className="text-gray-900">{project.client_category}</span>
+                </div>
+             )}
+            {project.main_contractor && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Totalentreprenör:</span>
+                     <span className="text-gray-900">{project.main_contractor}</span>
+                </div>
+            )}
         </div>
+
+        {/* ----- Separat grid för datum ----- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-y-2 gap-x-6 pt-4 border-t border-gray-200 mt-4 text-sm">
+             {project.start_date && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                    <span className="font-semibold text-gray-700">Startdatum:</span>
+                    <span className="text-gray-900">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                </div>
+             )}
+            {project.completion_date && (
+                <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                     <span className="font-semibold text-gray-700">Färdigställandedatum:</span>
+                     <span className="text-gray-900">{new Date(project.completion_date).toLocaleDateString('sv-SE')}</span>
+                </div>
+            )}
+             {project.updated_at && (
+                 <div className="grid grid-cols-[max-content_1fr] gap-x-2 items-baseline">
+                    <span className="font-semibold text-gray-700">Senast ändrad:</span>
+                    <span className="text-gray-900">{new Date(project.updated_at).toLocaleDateString('sv-SE')}</span>
+                </div>
+             )}
+        </div>
+
+        {/* ----- Övrig projektinfo (separat block) ----- */}
+        {project.other_project_info && (
+          <div className="pt-4 border-t border-gray-200 mt-4">
+            <h2 className="text-lg font-semibold mb-1">Övrig projektinfo</h2>
+            <p className="text-gray-700 whitespace-pre-wrap">
+              {project.other_project_info}
+            </p>
+          </div>
+        )}
+
       </div>
 
       {/* Sektion för offerter */}
@@ -168,6 +304,8 @@ export default async function ProjectDetailsPage({ params }: ProjectDetailsPageP
             error={quotesError?.message || null} 
             currentUserId={currentUserId} 
             isAdmin={isAdmin} 
+            myAccessRequests={myAccessRequests}
+            requestsForMyQuotes={requestsForMyQuotes}
         />
 
       </div>
