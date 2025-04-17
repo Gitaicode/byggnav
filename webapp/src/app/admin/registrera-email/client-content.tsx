@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { Database } from '@/lib/supabase/database.types'; // Antagen standardplats
 import { companyTypes, contractorTypes } from '@/lib/constants';
 import { registerEmailAction } from './actions'; // Server action för att spara
-import { fetchRegisteredEmails } from './data'; // Behövs för att uppdatera listan
 
 // Typer importerade eller kopierade från page.tsx (eller bättre: flytta till types/index.ts)
 export type RegisteredEmail = Database['public']['Tables']['registered_emails']['Row'];
@@ -58,6 +57,12 @@ export default function RegisterEmailClientContent({
     },
   });
 
+  // UPPDATERING: Lyssna på ändringar i initialEmails prop för att uppdatera state
+  // Detta säkerställer att listan uppdateras när Server Componenten renderar om
+  useEffect(() => {
+    setRegisteredEmails(initialEmails);
+  }, [initialEmails]);
+
   // Uppdatera filtrerad lista när filter eller ursprungslistan ändras
   useEffect(() => {
     const lowerCaseCityFilter = filters.city.toLowerCase();
@@ -100,10 +105,9 @@ export default function RegisterEmailClientContent({
       } else {
         setFormSuccess('E-postadress registrerad!');
         reset();
-        // Ladda om listan FÖRSIKTIGT - kan orsaka race conditions
-        // Överväg att returnera den nya posten från action och lägga till den i state
-        const emails = await fetchRegisteredEmails(); 
-        setRegisteredEmails(emails); 
+        // TA BORT direkt datahämtning härifrån. Uppdatering sker via prop.
+        // const emails = await fetchRegisteredEmails(); 
+        // setRegisteredEmails(emails); 
       }
     });
   };
