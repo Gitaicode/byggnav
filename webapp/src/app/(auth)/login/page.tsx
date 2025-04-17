@@ -17,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
 
     console.log('[Login Page] Försöker logga in...');
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -32,7 +32,8 @@ export default function LoginPage() {
           setError(error.message);
       }
     } else {
-      console.log('[Login Page] Inloggning lyckades! Auth state change hanterar navigering.');
+      console.log('[Login Page] Inloggning lyckades! Omdirigerar till dashboard.');
+      router.push('/dashboard');
     }
   };
 

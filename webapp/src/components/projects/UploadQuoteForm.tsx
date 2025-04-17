@@ -6,34 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation'; // För att kunna uppdatera sidan
-
-// Alternativ för Entreprenörstyp
-const contractorTypes = [
-  'Avfallshantering',
-  'Betong',
-  'Brandtätning & brandskydd',
-  'El',
-  'Golv',
-  'Hiss',
-  'Kök',
-  'Kran',
-  'Lås',
-  'Mark',
-  'Måleri',
-  'Mur & Puts',
-  'Plåt',
-  'Rivning & sanering',
-  'Bygg',
-  'Solceller',
-  'Städning',
-  'Stommontering',
-  'Ställning',
-  'Styr',
-  'Tak',
-  'Ventilation',
-  'VS',
-  'Övrigt'
-] as const; // Viktigt med 'as const' för z.enum
+import { contractorTypes } from '@/lib/constants'; // Importera från constants
 
 // Zod schema för offerformuläret - Uppdaterat
 const quoteSchema = z.object({

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createMiddlewareClient } from './lib/supabase/server'; // Importera middleware-klienten
+import { createMiddlewareClient } from './lib/supabase/middleware'; // Importera middleware-klienten
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();

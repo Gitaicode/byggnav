@@ -1,10 +1,11 @@
 'use client'; // Gör om till klientkomponent för att använda hooks
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client'; // Använd klient-klient
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Quote, Profile, Project } from '@/lib/types'; // Importera typer
+import Image from 'next/image'; // Importera Image
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null); // Bättre typning kan göras
@@ -44,7 +45,7 @@ export default function DashboardPage() {
         // 3. Hämta projekt (inkludera nya fält)
         const { data: projectData, error: projectsError } = await supabase
           .from('projects')
-          .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url')
+          .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
           .order('created_at', { ascending: false });
 
         if (projectsError) {
@@ -99,19 +100,18 @@ export default function DashboardPage() {
   const isAdmin = profile?.is_admin || false;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Projekt</h1>
+    <div className="py-8">
+      <div className="flex justify-between items-center mb-6 px-4 sm:px-6 lg:px-8">
+        <h1 className="text-3xl font-bold">Projektöversikt</h1>
         {isAdmin && (
           <Link href="/projects/new">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
               Skapa nytt projekt
             </button>
           </Link>
         )}
       </div>
 
-      <h2 className="text-xl font-semibold mb-4">Projektöversikt</h2>
       {error && <p className="text-red-600">Kunde inte ladda projekt: {error}</p>}
       {!error && projects.length === 0 ? (
         <div className="text-center py-10 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
@@ -136,43 +136,78 @@ export default function DashboardPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => (
-            <div key={project.id} className="border rounded-lg p-4 shadow hover:shadow-md transition-shadow bg-white flex flex-col">
-              <h3 className="text-lg font-semibold mb-2 truncate">
-                  <Link href={`/projects/${project.id}`} className="hover:text-blue-600 hover:underline">
-                      {project.title}
-                  </Link>
-              </h3>
-              <p className="text-sm text-gray-600 mb-3 truncate">
-                {project.description || 'Ingen beskrivning'}
-              </p>
-              
-              {project.client_name && (
-                <p className="text-xs text-gray-500 mb-1 truncate">
-                  Beställare: <span className="font-medium">{project.client_name}</span>
-                </p>
-              )}
-              {project.tender_document_url && (
-                <div className="text-xs text-gray-500 mb-3 truncate">
-                  <span>Förfrågningsunderlag: </span>
-                  <a 
-                    href={project.tender_document_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-blue-600 hover:text-blue-800 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Länk
-                  </a>
+            <Link key={project.id} href={`/projects/${project.id}`} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group">
+              <div className="flex h-full">
+                <div className="p-4 flex-grow flex flex-col">
+                  <h3 className="text-lg font-semibold mb-1">
+                    {project.title}
+                  </h3>
+                  {project.area && (
+                     <p className="text-sm text-gray-600 mb-1">
+                       Område: <span className="font-medium">{project.area}</span>
+                     </p>
+                  )}
+                  {project.client_name && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Beställare: <span className="font-medium">{project.client_name}</span>
+                    </p>
+                  )}
+                  {project.category && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Kategori: <span className="font-medium">
+                      {
+                        (() => {
+                          let cat = project.category.includes('(') ? project.category.split('(')[0].trim() : project.category;
+                          if (cat === 'Kommersiell byggnad') return 'Kommersiell';
+                          if (cat === 'Teknisk anläggning') return 'Teknisk';
+                          // Lägg till fler regler här vid behov
+                          return cat;
+                        })()
+                      }
+                      </span>
+                    </p>
+                  )}
+                  {project.gross_floor_area && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      BTA: <span className="font-medium">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
+                    </p>
+                  )}
+                  {project.start_date && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Start: <span className="font-medium">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                    </p>
+                  )}
+                  {project.tender_document_url && (
+                    <div className="text-sm text-gray-500 mb-1">
+                      <span>FFU: </span>
+                      <a
+                        href={project.tender_document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Länk
+                      </a>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="flex justify-between items-center text-xs text-gray-500">
-                <span>Status: <span className="font-medium capitalize">{project.status}</span></span>
-                <span>{new Date(project.created_at).toLocaleDateString('sv-SE')}</span>
+                {project.building_image_url && (
+                  <div className="w-1/2 flex-shrink-0 relative">
+                    <Image
+                      src={project.building_image_url}
+                      alt={`Miniatyrbild för ${project.title}`}
+                      layout="fill"
+                      objectFit="cover"
+                      className="group-hover:opacity-90 transition-opacity"
+                    />
+                  </div>
+                )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

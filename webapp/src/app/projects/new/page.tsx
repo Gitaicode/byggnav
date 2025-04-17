@@ -10,7 +10,6 @@ import { supabase } from '@/lib/supabase/client'; // Använd client-klient för 
 // Alternativ för select-listor
 const projectStatuses = ['Planering', 'Pågående', 'Färdigställt'] as const;
 const clientCategories = ['Offentlig', 'Privat'] as const;
-const projectTypes = ['bostad', 'industri', 'kontor', 'garage', 'övrigt'] as const;
 
 // Zod schema för validering - Utökat
 const projectSchema = z.object({
@@ -24,14 +23,17 @@ const projectSchema = z.object({
   area: z.string().max(100, 'Max 100 tecken').optional().nullable(),
   client_category: z.enum(clientCategories).optional().nullable(),
   main_contractor: z.string().max(100, 'Max 100 tecken').optional().nullable(),
-  project_type: z.enum(projectTypes).optional().nullable(),
   gross_floor_area: z.coerce.number().positive('Måste vara positivt').optional().nullable(), // BTA
   building_area: z.coerce.number().positive('Måste vara positivt').optional().nullable(), // Byggarea
   num_apartments: z.coerce.number().int('Måste vara heltal').positive('Måste vara positivt').optional().nullable(),
   num_floors: z.coerce.number().int('Måste vara heltal').positive('Måste vara positivt').optional().nullable(),
+  num_buildings: z.coerce.number().int('Måste vara heltal').positive('Måste vara positivt').optional().nullable(),
   environmental_class: z.string().max(50, 'Max 50 tecken').optional().nullable(),
   start_date: z.string().refine((val) => !val || !isNaN(Date.parse(val)), { message: 'Ogiltigt datum' }).optional().nullable(), // Hantera date input som sträng först
   completion_date: z.string().refine((val) => !val || !isNaN(Date.parse(val)), { message: 'Ogiltigt datum' }).optional().nullable(),
+  tender_document_url: z.string().url({ message: "Ange en giltig URL" }).optional().or(z.literal('')).nullable(),
+  supplementary_tender_document_url: z.string().url({ message: "Ange en giltig URL" }).optional().or(z.literal('')).nullable(),
+  model_3d_url: z.string().url({ message: "Ange en giltig URL" }).optional().or(z.literal('')).nullable(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -51,7 +53,6 @@ export default function NewProjectPage() {
     defaultValues: { // Sätt default för select om nödvändigt
         status: undefined, // Eller 'Planering'?
         client_category: undefined,
-        project_type: undefined,
     }
   });
 
@@ -77,12 +78,15 @@ export default function NewProjectPage() {
             area: data.area,
             client_category: data.client_category,
             main_contractor: data.main_contractor,
-            project_type: data.project_type,
             gross_floor_area: data.gross_floor_area,
             building_area: data.building_area,
             num_apartments: data.num_apartments,
             num_floors: data.num_floors,
+            num_buildings: data.num_buildings,
             environmental_class: data.environmental_class,
+            tender_document_url: data.tender_document_url || null,
+            supplementary_tender_document_url: data.supplementary_tender_document_url || null,
+            model_3d_url: data.model_3d_url || null,
             // Konvertera till ISO string om databasen förväntar sig timestamp/date
             // Kontrollera att data.start_date/completion_date inte är null/undefined först
             start_date: data.start_date ? new Date(data.start_date).toISOString() : null,
@@ -165,14 +169,6 @@ export default function NewProjectPage() {
                 <input id="main_contractor" type="text" {...register('main_contractor')} className={`${baseInputClasses} ${errors.main_contractor ? errorInputClasses : normalInputClasses}`} />
                 {errors.main_contractor && <p className={errorMessageClasses}>{errors.main_contractor.message}</p>}
             </div>
-            <div>
-                <label htmlFor="project_type" className={labelClasses}>Projekttyp</label>
-                <select id="project_type" {...register('project_type')} className={`${baseInputClasses} ${errors.project_type ? errorInputClasses : normalInputClasses} bg-white`} defaultValue="">
-                    <option value="" disabled>Välj typ...</option>
-                    {projectTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                {errors.project_type && <p className={errorMessageClasses}>{errors.project_type.message}</p>}
-            </div>
              <div>
                 <label htmlFor="environmental_class" className={labelClasses}>Miljöklassning</label>
                 <input id="environmental_class" type="text" {...register('environmental_class')} className={`${baseInputClasses} ${errors.environmental_class ? errorInputClasses : normalInputClasses}`} />
@@ -201,6 +197,11 @@ export default function NewProjectPage() {
                 <input id="num_floors" type="number" step="1" {...register('num_floors')} className={`${baseInputClasses} ${errors.num_floors ? errorInputClasses : normalInputClasses}`} />
                 {errors.num_floors && <p className={errorMessageClasses}>{errors.num_floors.message}</p>}
             </div>
+            <div>
+                <label htmlFor="num_buildings" className={labelClasses}>Antal byggnader</label>
+                <input id="num_buildings" type="number" step="1" {...register('num_buildings')} className={`${baseInputClasses} ${errors.num_buildings ? errorInputClasses : normalInputClasses}`} />
+                {errors.num_buildings && <p className={errorMessageClasses}>{errors.num_buildings.message}</p>}
+            </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -213,6 +214,24 @@ export default function NewProjectPage() {
                 <label htmlFor="completion_date" className={labelClasses}>Färdigställandedatum</label>
                 <input id="completion_date" type="date" {...register('completion_date')} className={`${baseInputClasses} ${errors.completion_date ? errorInputClasses : normalInputClasses} bg-white`} />
                 {errors.completion_date && <p className={errorMessageClasses}>{errors.completion_date.message}</p>}
+            </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+            <div>
+                <label htmlFor="tender_document_url" className={labelClasses}>Förfrågningsunderlag</label>
+                <input id="tender_document_url" type="url" {...register('tender_document_url')} className={`${baseInputClasses} ${errors.tender_document_url ? errorInputClasses : normalInputClasses}`} />
+                {errors.tender_document_url && <p className={errorMessageClasses}>{errors.tender_document_url.message}</p>}
+            </div>
+            <div>
+                <label htmlFor="supplementary_tender_document_url" className={labelClasses}>Kompletterande förfrågningsunderlag</label>
+                <input id="supplementary_tender_document_url" type="url" {...register('supplementary_tender_document_url')} className={`${baseInputClasses} ${errors.supplementary_tender_document_url ? errorInputClasses : normalInputClasses}`} />
+                {errors.supplementary_tender_document_url && <p className={errorMessageClasses}>{errors.supplementary_tender_document_url.message}</p>}
+            </div>
+            <div>
+                <label htmlFor="model_3d_url" className={labelClasses}>Se 3D-modell i webbläsaren</label>
+                <input id="model_3d_url" type="url" {...register('model_3d_url')} className={`${baseInputClasses} ${errors.model_3d_url ? errorInputClasses : normalInputClasses}`} />
+                {errors.model_3d_url && <p className={errorMessageClasses}>{errors.model_3d_url.message}</p>}
             </div>
         </div>
 

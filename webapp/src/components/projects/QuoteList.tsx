@@ -178,40 +178,40 @@ export default function QuoteList({
           <div key={quote.id} className="border rounded-md p-4 bg-white shadow-sm space-y-3">
             {/* --- Huvudinnehåll för Offert --- */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              {canSeeFullInfo ? (
+            {canSeeFullInfo ? (
                 // Fullständig vy
-                <>
-                  <div className="flex-grow">
-                    <p className="font-semibold text-base">{quote.contractor_type}</p>
-                    <p className="text-sm text-gray-600">Summa: {currencyFormatter.format(quote.amount)}</p>
-                    <p className="text-xs text-gray-500 mt-1">
+              <>
+                <div className="flex-grow">
+                  <p className="font-semibold text-base">{quote.contractor_type}</p>
+                  <p className="text-sm text-gray-600">Summa: {currencyFormatter.format(quote.amount)}</p>
+                  <p className="text-xs text-gray-500 mt-1">
                       Uppladdad av: {isOwner ? 'Mig' : (quote.profiles?.email || 'Okänd')} den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
-                    </p>
-                  </div>
+                  </p>
+                </div>
                   <div className="flex-shrink-0 flex items-center space-x-2">
-                    <button
-                      onClick={() => handleDownload(quote.file_path, quote.file_name)}
-                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline px-3 py-1 rounded border border-blue-200 hover:bg-blue-50"
-                    >
-                      Ladda ner ({quote.file_name})
-                    </button>
-                    {canDelete && (
-                      <DeleteQuoteButton
-                          quoteId={quote.id}
-                          filePath={quote.file_path}
-                      />
-                    )}
-                  </div>
-                </>
-              ) : (
+                  <button
+                    onClick={() => handleDownload(quote.file_path, quote.file_name)}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline px-3 py-1 rounded border border-blue-200 hover:bg-blue-50"
+                  >
+                    Ladda ner ({quote.file_name})
+                  </button>
+                  {canDelete && (
+                    <DeleteQuoteButton
+                        quoteId={quote.id}
+                        filePath={quote.file_path}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
                 // Begränsad vy (inte ägare, inte admin, inte godkänd request)
-                <>
-                  <div className="flex-grow">
-                    <p className="font-semibold text-base">{quote.contractor_type}</p>
-                     <p className="text-xs text-gray-500 mt-1">
-                       Uppladdad den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
-                     </p>
-                  </div>
+              <>
+                <div className="flex-grow">
+                  <p className="font-semibold text-base">{quote.contractor_type}</p>
+                   <p className="text-xs text-gray-500 mt-1">
+                     Uppladdad den {new Date(quote.created_at).toLocaleDateString('sv-SE')}
+                   </p>
+                </div>
                   <div className="flex-shrink-0">
                     {/* Knapp för att begära access visas bara om ingen request är skickad/pending */}
                     {(!myPendingRequest && requestState !== 'requested') && (
@@ -227,9 +227,9 @@ export default function QuoteList({
                        <span className="text-sm text-gray-500 italic px-3 py-1">Förfrågan skickad</span>
                     )}
                   </div>
-                </>
-              )}
-            </div>
+              </>
+            )}
+          </div>
             
             {/* --- Sektion för att hantera förfrågningar (visas endast för ägaren) --- */}
             {isOwner && pendingRequestsForThisQuote.length > 0 && (
