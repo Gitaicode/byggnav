@@ -131,74 +131,76 @@ export default function StartPage() {
              </button>
            </Link>
          </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {previewProjects.map((project) => (
-             <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-row h-full min-h-[180px]">
-              {/* Vänster: Projektinfo - Exakt samma klasser som inloggad vy */}
-              <div className="p-4 flex-grow flex flex-col w-1/2">
-                <h3 className="text-lg font-semibold mb-1">
-                  {project.title}
-                </h3>
-                {project.area && (
-                  <p className="text-sm text-gray-500 mb-1">
-                    Område: <span className="font-medium text-gray-700">{project.area}</span>
-                  </p>
-                )}
-                {project.client_name && (
-                  <p className="text-sm text-gray-500 mb-1">
-                    Beställare: <span className="font-medium text-gray-700">{project.client_name}</span>
-                  </p>
-                )}
-                {project.category && (
-                  <p className="text-sm text-gray-500 mb-1">
-                    Kategori: <span className="font-medium text-gray-700">{project.category}</span>
-                  </p>
-                )}
-                {project.gross_floor_area && (
-                  <p className="text-sm text-gray-500 mb-1">
-                    BTA: <span className="font-medium text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
-                  </p>
-                )}
-                {project.start_date && (
-                  <p className="text-sm text-gray-500 mb-1">
-                    Start: <span className="font-medium text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
-                  </p>
-                )}
-                {project.tender_document_url && (
-                  <div className="text-sm text-gray-500 mb-1">
-                    <span>FFU: </span>
-                    <a
-                      href={project.tender_document_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      Länk
-                    </a>
+            <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-col h-full">
+              <div className="flex flex-row">
+                <div className="p-4 flex-grow flex flex-col w-1/2">
+                  <h3 className="text-lg font-semibold mb-1">
+                    {project.title}
+                  </h3>
+                  {project.area && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Område: <span className="font-medium text-gray-700">{project.area}</span>
+                    </p>
+                  )}
+                  {project.client_name && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Beställare: <span className="font-medium text-gray-700">{project.client_name}</span>
+                    </p>
+                  )}
+                  {project.category && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Kategori: <span className="font-medium text-gray-700">{project.category}</span>
+                    </p>
+                  )}
+                  {project.gross_floor_area && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      BTA: <span className="font-medium text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
+                    </p>
+                  )}
+                  {project.start_date && (
+                    <p className="text-sm text-gray-500 mb-1">
+                      Start: <span className="font-medium text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                    </p>
+                  )}
+                  {project.tender_document_url && (
+                    <div className="text-sm text-gray-500 mb-1">
+                      <span>FFU: </span>
+                      <a
+                        href={project.tender_document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        Länk
+                      </a>
+                    </div>
+                  )}
+                </div>
+                {project.building_image_url && (
+                  <div className="w-1/2 flex-shrink-0 relative min-h-[180px]">
+                    <Image
+                      src={project.building_image_url}
+                      alt={`Bild för ${project.title}`}
+                      fill
+                      className="object-cover group-hover:opacity-90 transition-opacity"
+                      style={{ borderRadius: 0 }}
+                    />
                   </div>
                 )}
+                {!project.building_image_url && <div className="w-1/2 flex-shrink-0 min-h-[180px]"></div>}
               </div>
-              {/* Mitten: Bild - Exakt samma klasser som inloggad vy */}
-              {project.building_image_url && (
-                <div className="w-1/3 flex-shrink-0 relative min-h-[180px]">
-                  <Image
-                    src={project.building_image_url}
-                    alt={`Bild för ${project.title}`}
-                    fill
-                    className="object-cover group-hover:opacity-90 transition-opacity"
-                    style={{ borderRadius: 0 }}
-                  />
-                </div>
-              )}
-              {/* Höger: Offertdel - Styling konsekvent med info */}
-              <div className="flex flex-col justify-start w-1/4 p-4 border-l border-gray-200 bg-white">
-                <div className="font-semibold text-lg mb-2 pb-1">Offerter</div>
+              <div className="p-4 border-t border-gray-200 bg-gray-50">
+                <h4 className="font-semibold text-lg mb-2">Offerter</h4>
                 {offerCountByProject[project.id!] ? (
-                  Object.entries(offerCountByProject[project.id!]).map(([cat, count]) => (
-                    <div key={cat} className="text-sm text-gray-700 mb-1">
-                      {cat}: {count}st.
-                    </div>
-                  ))
+                  <div className="space-y-1">
+                    {Object.entries(offerCountByProject[project.id!]).map(([cat, count]) => (
+                      <div key={cat} className="text-sm text-gray-700">
+                        {cat}: {count} st.
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="text-sm text-gray-400 italic">Inga offerter</div>
                 )}
