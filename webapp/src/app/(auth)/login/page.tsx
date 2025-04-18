@@ -32,8 +32,8 @@ export default function LoginPage() {
           setError(error.message);
       }
     } else {
-      console.log('[Login Page] Inloggning lyckades! Omdirigerar till dashboard.');
-      router.push('/dashboard');
+      console.log('[Login Page] Inloggning lyckades! Omdirigerar till startsidan.');
+      router.push('/');
     }
   };
 
