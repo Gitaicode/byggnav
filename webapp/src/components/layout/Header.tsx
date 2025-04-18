@@ -91,7 +91,7 @@ export default function Header() {
   return (
     <header className="bg-gray-100 p-4 shadow-md sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Link href={session ? "/dashboard" : "/"} className="text-2xl font-bold text-gray-800 hover:text-blue-700">
+        <Link href="/" className="text-2xl font-bold text-gray-800 hover:text-blue-700">
           ByggNav
         </Link>
         <nav>
@@ -105,7 +105,7 @@ export default function Header() {
                     Hantera Email
                   </Link>
                 )}
-                <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800 hover:underline">
+                <Link href="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline">
                   Projekt
                 </Link>
                 <button 

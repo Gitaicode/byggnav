@@ -1,7 +1,7 @@
-// webapp/src/app/dashboard/loading.tsx
+// webapp/src/app/loading.tsx
 
-// Detta är UI:t som visas medan dashboard-sidan laddar sin data
-export default function DashboardLoading() {
+// Detta är UI:t som visas medan startsidan laddar sin data
+export default function Loading() {
   return (
     <div>
        <div className="flex justify-between items-center mb-6">
