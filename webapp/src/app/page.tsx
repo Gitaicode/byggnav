@@ -133,7 +133,7 @@ export default function StartPage() {
          </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {previewProjects.map((project) => (
-            <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-col h-full">
+            <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-col">
               <div className="flex flex-row">
                 <div className="p-4 flex-grow flex flex-col w-1/2">
                   <h3 className="text-lg font-semibold mb-1">
@@ -151,7 +151,15 @@ export default function StartPage() {
                   )}
                   {project.category && (
                     <p className="text-sm text-gray-500 mb-1">
-                      Kategori: <span className="font-medium text-gray-700">{project.category}</span>
+                      Kategori: <span className="font-medium text-gray-700">
+                        {(() => {
+                          // Förkorta specifika kategorier
+                          if (project.category.startsWith('Kommersiell byggnad')) return 'Kommersiell';
+                          if (project.category.startsWith('Teknisk anläggning')) return 'Teknisk';
+                          // Lägg till fler regler här vid behov
+                          return project.category; // Standard fallback
+                        })()}
+                      </span>
                     </p>
                   )}
                   {project.gross_floor_area && (
@@ -191,13 +199,15 @@ export default function StartPage() {
                 )}
                 {!project.building_image_url && <div className="w-1/2 flex-shrink-0 min-h-[180px]"></div>}
               </div>
-              <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="p-4 border-t border-gray-200 bg-white">
                 <h4 className="font-semibold text-lg mb-2">Offerter</h4>
                 {offerCountByProject[project.id!] ? (
-                  <div className="space-y-1">
+                  /* Justera flexbox för tätare kolumner, max höjd för ca 4 rader */
+                  <div className="flex flex-col flex-wrap content-start items-start max-h-24 gap-x-4 overflow-hidden">
                     {Object.entries(offerCountByProject[project.id!]).map(([cat, count]) => (
-                      <div key={cat} className="text-sm text-gray-700">
-                        {cat}: {count} st.
+                      // Ta bort punkten efter st
+                      <div key={cat} className="text-sm text-gray-700 w-full">
+                        {cat}: {count} st
                       </div>
                     ))}
                   </div>
@@ -260,38 +270,36 @@ export default function StartPage() {
                     {project.title}
                   </h3>
                   {project.area && (
-                     <p className="text-sm text-gray-600 mb-1">
-                       Område: <span className="font-medium">{project.area}</span>
+                     <p className="text-sm text-gray-500 mb-1">
+                       Område: <span className="font-medium text-gray-700">{project.area}</span>
                      </p>
                   )}
                   {project.client_name && (
                     <p className="text-sm text-gray-500 mb-1">
-                      Beställare: <span className="font-medium">{project.client_name}</span>
+                      Beställare: <span className="font-medium text-gray-700">{project.client_name}</span>
                     </p>
                   )}
                   {project.category && (
                     <p className="text-sm text-gray-500 mb-1">
-                      Kategori: <span className="font-medium">
-                      {
-                        (() => {
-                          let cat = project.category.includes('(') ? project.category.split('(')[0].trim() : project.category;
-                          if (cat === 'Kommersiell byggnad') return 'Kommersiell';
-                          if (cat === 'Teknisk anläggning') return 'Teknisk';
+                      Kategori: <span className="font-medium text-gray-700">
+                        {(() => {
+                          // Förkorta specifika kategorier
+                          if (project.category.startsWith('Kommersiell byggnad')) return 'Kommersiell';
+                          if (project.category.startsWith('Teknisk anläggning')) return 'Teknisk';
                           // Lägg till fler regler här vid behov
-                          return cat;
-                        })()
-                      }
+                          return project.category; // Standard fallback
+                        })()}
                       </span>
                     </p>
                   )}
                   {project.gross_floor_area && (
                     <p className="text-sm text-gray-500 mb-1">
-                      BTA: <span className="font-medium">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
+                      BTA: <span className="font-medium text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
                     </p>
                   )}
                   {project.start_date && (
                     <p className="text-sm text-gray-500 mb-1">
-                      Start: <span className="font-medium">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                      Start: <span className="font-medium text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
                     </p>
                   )}
                   {project.tender_document_url && (
