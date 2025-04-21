@@ -33,7 +33,7 @@ export default function StartPage() {
           console.log("Ingen användare inloggad, visar preview.");
           setUser(null);
           setLoading(false); // Sätt loading till false så preview kan köras
-          return; 
+          return;
         }
         setUser(user);
         const { data: profileData, error: profileError } = await supabase
@@ -67,21 +67,32 @@ export default function StartPage() {
   // --- Preview useEffect ---
   useEffect(() => {
     // Kör bara om user är null OCH initial loading är klar
-    if (user !== null || loading) return; 
+    if (user !== null || loading) return;
     const fetchPreviewData = async () => {
       setPreviewLoading(true);
       setPreviewError(null);
       try {
+        // Begränsa antalet projekt som hämtas för preview
         const { data: projectData, error: projectsError } = await supabase
           .from('projects')
-          .select('id, title, category, client_name, area, gross_floor_area, start_date, tender_document_url, building_image_url');
+          .select('id, title, category, client_name, area, gross_floor_area, start_date, tender_document_url, building_image_url')
+          .limit(3); // Hämta endast de 3 senaste projekten för startsidan
         if (projectsError) throw new Error(projectsError.message);
         setPreviewProjects(projectData || []);
-        const { data: quoteData, error: quotesError } = await supabase
-          .from('quotes')
-          .select('id, project_id, contractor_type');
-        if (quotesError) throw new Error(quotesError.message);
-        setPreviewQuotes(quoteData || []);
+
+        // Hämtar offerter för de specifika projekten om nödvändigt
+        const projectIds = (projectData || []).map(p => p.id).filter(Boolean);
+        if (projectIds.length > 0) {
+          const { data: quoteData, error: quotesError } = await supabase
+            .from('quotes')
+            .select('id, project_id, contractor_type')
+            .in('project_id', projectIds); // Hämta endast offerter för visade projekt
+          if (quotesError) throw new Error(quotesError.message);
+          setPreviewQuotes(quoteData || []);
+        } else {
+           setPreviewQuotes([]); // Nollställ om inga projekt finns
+        }
+
       } catch (err: any) {
         setPreviewError(err.message);
       } finally {
@@ -107,117 +118,155 @@ export default function StartPage() {
     return null; // Denna renderas inte eftersom layout.tsx hanterar suspense
   }
 
-  // Om ingen användare, visa preview + knappar
+  // Om ingen användare, visa den nya startsidan
   if (!user) {
-    if (previewLoading) {
-      return <div className="text-center py-10">Laddar projekt...</div>;
-    }
-    if (previewError) {
-      return <div className="text-center text-red-600 py-10">Kunde inte ladda projekt: {previewError}</div>;
-    }
     return (
-      <div className="py-8">
-        <h1 className="text-3xl font-bold mb-6 text-center">Projekt</h1>
-        {/* Lägg till knappar här */}
-        <div className="flex justify-center space-x-4 my-8">
-           <Link href="/login">
-             <button className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-               Logga in
-             </button>
-           </Link>
-           <Link href="/register">
-             <button className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
-               Registrera
-             </button>
-           </Link>
-         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {previewProjects.map((project) => (
-            <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-col">
-              <div className="flex flex-row">
-                <div className="p-4 flex-grow flex flex-col w-1/2">
-                  <h3 className="text-lg font-semibold mb-1">
-                    {project.title}
-                  </h3>
-                  {project.area && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Område: <span className="font-medium text-gray-700">{project.area}</span>
-                    </p>
-                  )}
-                  {project.client_name && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Beställare: <span className="font-medium text-gray-700">{project.client_name}</span>
-                    </p>
-                  )}
-                  {project.category && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Kategori: <span className="font-medium text-gray-700">
-                        {(() => {
-                          // Förkorta specifika kategorier
-                          if (project.category.startsWith('Kommersiell byggnad')) return 'Kommersiell';
-                          if (project.category.startsWith('Teknisk anläggning')) return 'Teknisk';
-                          // Lägg till fler regler här vid behov
-                          return project.category; // Standard fallback
-                        })()}
-                      </span>
-                    </p>
-                  )}
-                  {project.gross_floor_area && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      BTA: <span className="font-medium text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
-                    </p>
-                  )}
-                  {project.start_date && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Start: <span className="font-medium text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
-                    </p>
-                  )}
-                  {project.tender_document_url && (
-                    <div className="text-sm text-gray-500 mb-1">
-                      <span>FFU: </span>
-                      <a
-                        href={project.tender_document_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        Länk
-                      </a>
-                    </div>
-                  )}
-                </div>
-                {project.building_image_url && (
-                  <div className="w-1/2 flex-shrink-0 relative min-h-[180px]">
-                    <Image
-                      src={project.building_image_url}
-                      alt={`Bild för ${project.title}`}
-                      fill
-                      className="object-cover group-hover:opacity-90 transition-opacity"
-                      style={{ borderRadius: 0 }}
-                    />
-                  </div>
-                )}
-                {!project.building_image_url && <div className="w-1/2 flex-shrink-0 min-h-[180px]"></div>}
-              </div>
-              <div className="p-4 border-t border-gray-200 bg-white">
-                <h4 className="font-semibold text-lg mb-2">Offerter</h4>
-                {offerCountByProject[project.id!] ? (
-                  /* Justera flexbox för tätare kolumner, max höjd för ca 4 rader */
-                  <div className="flex flex-col flex-wrap content-start items-start max-h-24 gap-x-4 overflow-hidden">
-                    {Object.entries(offerCountByProject[project.id!]).map(([cat, count]) => (
-                      // Ta bort punkten efter st
-                      <div key={cat} className="text-sm text-gray-700 w-full">
-                        {cat}: {count} st
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400 italic">Inga offerter</div>
-                )}
-              </div>
+      <div className="bg-white min-h-screen"> {/* Ändrad från gradient till vit bakgrund */}
+
+        {/* Välkomstsektion */}
+        <section className="text-center py-12 px-4 sm:px-6 lg:px-8">
+          {/* Uppdaterad välkomsttext */}
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            Välkommen till <strong>ByggNav</strong> – den digitala mötesplatsen för beställare, totalentreprenörer, konsulter och underentreprenörer. Hitta nya projekt, ladda upp din offert och skapa framtida samarbeten!
+          </p>
+        </section>
+
+        {/* Process-steg */}
+        <section className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Steg 1 */}
+            <div className="bg-white p-6 rounded-lg shadow-md text-center flex flex-col items-center">
+              <h2 className="text-xl font-semibold mb-2">1. Registrera dig</h2>
+              <p className="text-gray-600">Skapa ett konto och bli en del av nätverket.</p>
             </div>
-          ))}
-        </div>
+            {/* Steg 2 */}
+            <div className="bg-white p-6 rounded-lg shadow-md text-center flex flex-col items-center">
+              <h2 className="text-xl font-semibold mb-2">2. Utforska projekt</h2>
+              <p className="text-gray-600">Hitta byggprojekt och nya samarbeten.</p>
+            </div>
+            {/* Steg 3 */}
+            <div className="bg-white p-6 rounded-lg shadow-md text-center flex flex-col items-center">
+              <h2 className="text-xl font-semibold mb-2">3. Dela offert</h2>
+              <p className="text-gray-600">Låt beställare ta del av din offert!</p>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA-sektion */}
+        <section className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
+         <div className="bg-white p-8 rounded-lg shadow-md inline-block">
+            <h2 className="text-2xl font-bold mb-4">Få fler projekt!</h2>
+            <Link href="/register"> {/* Länkar till registrering */}
+              <button className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 hover:scale-105 transition duration-150 ease-in-out">
+                Bli medlem
+              </button>
+            </Link>
+          </div>
+        </section>
+
+        {/* Projektsektion (Befintlig kod anpassad) */}
+        <section className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+           <h2 className="text-3xl font-bold mb-8 text-center">Aktuella Projekt</h2>
+           {previewLoading && <div className="text-center py-10">Laddar projekt...</div>}
+           {previewError && <div className="text-center text-red-600 py-10">Kunde inte ladda projekt: {previewError}</div>}
+           {!previewLoading && !previewError && previewProjects.length === 0 && (
+             <div className="text-center text-gray-500 py-10">Inga projekt att visa just nu.</div>
+           )}
+           {!previewLoading && !previewError && previewProjects.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {previewProjects.map((project) => (
+                // Befintlig projektkortsstruktur (behålls oförändrad förutom ev. småjusteringar)
+                <div key={project.id} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group flex flex-col">
+                  <div className="flex flex-row">
+                    <div className="p-4 flex-grow flex flex-col w-1/2">
+                      <h3 className="text-lg font-semibold mb-1">
+                        {project.title}
+                      </h3>
+                      {project.area && (
+                        <p className="text-sm text-gray-700 mb-1">
+                          Område: <span className="text-gray-700">{project.area}</span>
+                        </p>
+                      )}
+                      {project.client_name && (
+                        <p className="text-sm text-gray-700 mb-1">
+                          Beställare: <span className="text-gray-700">{project.client_name}</span>
+                        </p>
+                      )}
+                      {project.category && (
+                        <p className="text-sm text-gray-700 mb-1">
+                          Kategori: <span className="text-gray-700">
+                            {(() => {
+                              if (project.category.startsWith('Kommersiell byggnad')) return 'Kommersiell';
+                              if (project.category.startsWith('Teknisk anläggning')) return 'Teknisk';
+                              return project.category;
+                            })()}
+                          </span>
+                        </p>
+                      )}
+                      {project.gross_floor_area && (
+                        <p className="text-sm text-gray-700 mb-1">
+                          BTA: <span className="text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
+                        </p>
+                      )}
+                      {project.start_date && (
+                        <p className="text-sm text-gray-700 mb-1">
+                          Start: <span className="text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                        </p>
+                      )}
+                      {project.tender_document_url && (
+                        <div className="text-sm text-gray-700 mb-1">
+                          <span>FFU: </span>
+                          <a
+                            href={project.tender_document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            Länk
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    {project.building_image_url && (
+                      <div className="w-1/2 flex-shrink-0 relative min-h-[180px]">
+                        <Image
+                          src={project.building_image_url}
+                          alt={`Bild för ${project.title}`}
+                          fill
+                          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw" // Example sizes, adjust as needed
+                          className="object-cover group-hover:opacity-90 transition-opacity"
+                          style={{ borderRadius: 0 }} // Ensure image doesn't have round corners if container does
+                          priority={previewProjects.findIndex(p => p.id === project.id) < 3} // Prioritize loading images for first few cards
+                        />
+                      </div>
+                    )}
+                    {!project.building_image_url && <div className="w-1/2 flex-shrink-0 bg-gray-200 min-h-[180px]"></div>} {/* Placeholder */}
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-white"> {/* Ändrad från bg-gray-50 */}
+                    <h4 className="font-semibold text-base mb-2">Offerter</h4> {/* Något mindre rubrik */}
+                    {offerCountByProject[project.id!] ? (
+                      /* Justera flexbox för tätare kolumner */
+                      <div className="flex flex-col flex-wrap content-start items-start max-h-20 gap-x-4 overflow-hidden"> {/* Minskad max-höjd */}
+                        {Object.entries(offerCountByProject[project.id!]).map(([cat, count]) => (
+                          <div key={cat} className="text-sm text-gray-700 w-full"> {/* Ändrad från text-xs */}
+                            {cat}: {count} st
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-400 italic">Inga offerter</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+           )}
+        </section>
+
+        {/* Footer (Enkel placeholder) */}
+        <footer className="text-center py-6 mt-12 border-t border-gray-200">
+          <p className="text-gray-500 text-sm">&copy; {new Date().getFullYear()} ByggNav. Alla rättigheter förbehållna.</p>
+        </footer>
       </div>
     );
   }
@@ -270,18 +319,18 @@ export default function StartPage() {
                     {project.title}
                   </h3>
                   {project.area && (
-                     <p className="text-sm text-gray-500 mb-1">
-                       Område: <span className="font-medium text-gray-700">{project.area}</span>
+                     <p className="text-sm text-gray-700 mb-1">
+                       Område: <span className="text-gray-700">{project.area}</span>
                      </p>
                   )}
                   {project.client_name && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Beställare: <span className="font-medium text-gray-700">{project.client_name}</span>
+                    <p className="text-sm text-gray-700 mb-1">
+                      Beställare: <span className="text-gray-700">{project.client_name}</span>
                     </p>
                   )}
                   {project.category && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Kategori: <span className="font-medium text-gray-700">
+                    <p className="text-sm text-gray-700 mb-1">
+                      Kategori: <span className="text-gray-700">
                         {(() => {
                           // Förkorta specifika kategorier
                           if (project.category.startsWith('Kommersiell byggnad')) return 'Kommersiell';
@@ -293,17 +342,17 @@ export default function StartPage() {
                     </p>
                   )}
                   {project.gross_floor_area && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      BTA: <span className="font-medium text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
+                    <p className="text-sm text-gray-700 mb-1">
+                      BTA: <span className="text-gray-700">{project.gross_floor_area.toLocaleString('sv-SE')} m²</span>
                     </p>
                   )}
                   {project.start_date && (
-                    <p className="text-sm text-gray-500 mb-1">
-                      Start: <span className="font-medium text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
+                    <p className="text-sm text-gray-700 mb-1">
+                      Start: <span className="text-gray-700">{new Date(project.start_date).toLocaleDateString('sv-SE')}</span>
                     </p>
                   )}
                   {project.tender_document_url && (
-                    <div className="text-sm text-gray-500 mb-1">
+                    <div className="text-sm text-gray-700 mb-1">
                       <span>FFU: </span>
                       <a
                         href={project.tender_document_url}

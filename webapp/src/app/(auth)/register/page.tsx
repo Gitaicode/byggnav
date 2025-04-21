@@ -48,12 +48,7 @@ export default function RegisterPage() {
     } else if (data.user && data.user.identities?.length === 0) {
       setError('En användare med denna e-postadress finns redan.');
     } else if (data.user) {
-      setMessage(
-        'Registreringen lyckades! Kolla din e-post (' + email + ') för att bekräfta ditt konto.'
-      );
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
+      router.push('/');
     } else {
        setError('Ett okänt fel inträffade vid registrering.');
     }
