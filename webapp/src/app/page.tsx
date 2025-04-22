@@ -14,6 +14,9 @@ export default function StartPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [hasManuallyReloaded, setHasManuallyReloaded] = useState(false);
+  const [usedCachedData, setUsedCachedData] = useState(false);
   const router = useRouter();
 
   // --- Preview states/hooks på toppnivå ---
@@ -22,81 +25,199 @@ export default function StartPage() {
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+  // Cache-relaterade funktioner
+  const saveCachedProjects = (projectData: Project[]) => {
+    if (projectData && projectData.length > 0) {
       try {
-        const { data: { user }, error: getUserError } = await supabase.auth.getUser();
-        if (getUserError) {
-          console.error("Fel vid hämtning av användare:", getUserError);
-          throw new Error(getUserError.message || 'Kunde inte hämta användardata.');
+        const cacheData = {
+          timestamp: new Date().getTime(),
+          projects: projectData
+        };
+        localStorage.setItem('cachedProjects', JSON.stringify(cacheData));
+        console.log('Projektdata sparad i cache');
+      } catch (err) {
+        console.error('Kunde inte spara projekt i cache:', err);
+      }
+    }
+  };
+
+  const getCachedProjects = (): Project[] | null => {
+    try {
+      const cachedData = localStorage.getItem('cachedProjects');
+      if (!cachedData) return null;
+      
+      const { timestamp, projects } = JSON.parse(cachedData);
+      // Cache är giltig i 24 timmar
+      const cacheValidMs = 24 * 60 * 60 * 1000;
+      const now = new Date().getTime();
+      
+      if (now - timestamp > cacheValidMs) {
+        console.log('Cache är för gammal, använder inte');
+        return null;
+      }
+      
+      if (!projects || !Array.isArray(projects) || projects.length === 0) {
+        console.log('Ogiltig cache-format eller tom cache');
+        return null;
+      }
+      
+      console.log('Använder cachad projektdata från', new Date(timestamp).toLocaleString());
+      return projects;
+    } catch (err) {
+      console.error('Fel vid hämtning av cachad projektdata:', err);
+      return null;
+    }
+  };
+
+  // Funktion för att hantera manuell omladdning av data när något verkar fel
+  const handleManualReload = () => {
+    setLoading(true);
+    setError(null);
+    setRetryCount(0);
+    setHasManuallyReloaded(true);
+    // Kort timeout för att garantera en visuell förändring innan datahämtning startar igen
+    setTimeout(() => {
+      fetchData();
+    }, 100);
+  };
+
+  // Extrahera datainhämtningen till en separat funktion så vi kan återanvända den
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    setUsedCachedData(false);
+    try {
+      const { data: { user }, error: getUserError } = await supabase.auth.getUser();
+      if (getUserError) {
+        console.error("Fel vid hämtning av användare:", getUserError);
+        throw new Error(getUserError.message || 'Kunde inte hämta användardata.');
+      }
+      
+      if (!user) {
+        console.log("Ingen användare inloggad, visar preview.");
+        setUser(null);
+        setLoading(false); // Sätt loading till false så preview kan köras
+        return;
+      }
+      
+      setUser(user);
+      
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, is_admin')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileError) {
+          console.error("Fel vid hämtning av profil:", profileError);
+          throw new Error(profileError.message || 'Kunde inte hämta profil.');
         }
         
-        if (!user) {
-          console.log("Ingen användare inloggad, visar preview.");
-          setUser(null);
-          setLoading(false); // Sätt loading till false så preview kan köras
-          return;
+        if (!profileData) {
+          throw new Error('Kunde inte hitta användarprofil.');
         }
         
-        setUser(user);
+        setProfile(profileData);
         
         try {
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('id, is_admin')
-            .eq('id', user.id)
-            .single();
+          const { data: projectData, error: projectsError } = await supabase
+            .from('projects')
+            .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
+            .order('created_at', { ascending: false });
           
-          if (profileError) {
-            console.error("Fel vid hämtning av profil:", profileError);
-            throw new Error(profileError.message || 'Kunde inte hämta profil.');
-          }
-          
-          if (!profileData) {
-            throw new Error('Kunde inte hitta användarprofil.');
-          }
-          
-          setProfile(profileData);
-          
-          try {
-            const { data: projectData, error: projectsError } = await supabase
-              .from('projects')
-              .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
-              .order('created_at', { ascending: false });
+          if (projectsError) {
+            console.error("Fel vid hämtning av projekt:", projectsError);
             
-            if (projectsError) {
-              console.error("Fel vid hämtning av projekt:", projectsError);
-              throw new Error(projectsError.message || 'Kunde inte hämta projekt.');
+            // Kontrollera om vi har cachad data att använda som fallback
+            const cachedProjects = getCachedProjects();
+            if (cachedProjects) {
+              console.log('Använder cachad projektdata på grund av API-fel');
+              setProjects(cachedProjects);
+              setUsedCachedData(true);
+              setRetryCount(0);
+              return;
             }
             
-            setProjects((projectData as Project[]) || []);
-          } catch (projectErr: any) {
-            console.error("Fel vid hämtning av projekt:", projectErr);
-            setError(projectErr.message || 'Kunde inte hämta projekt.');
+            throw new Error(projectsError.message || 'Kunde inte hämta projekt.');
           }
-        } catch (profileErr: any) {
-          console.error("Fel vid hämtning av profil:", profileErr);
-          setError(profileErr.message || 'Kunde inte hämta profil.');
+          
+          // Kontrollera om projektData är tomt när det inte borde vara det
+          // Detta är en skyddsmekanism mot buggen där data inte visas
+          if (!projectData || projectData.length === 0) {
+            console.warn("Projekthämtning gav tomt resultat när det inte förväntades");
+            
+            // Kontrollera om vi har cachad data att använda som fallback
+            const cachedProjects = getCachedProjects();
+            if (cachedProjects) {
+              console.log('Använder cachad projektdata på grund av tom respons');
+              setProjects(cachedProjects);
+              setUsedCachedData(true);
+              setRetryCount(0);
+              return;
+            }
+            
+            // Kontrollera om vi har nått maxantalet försök
+            const maxRetries = 2;
+            if (retryCount < maxRetries) {
+              console.log(`Försöker igen automatiskt (${retryCount + 1}/${maxRetries})...`);
+              setRetryCount(prev => prev + 1);
+              // Kort paus innan vi försöker igen
+              setTimeout(() => {
+                fetchData();
+              }, 1000);
+              return; // Avbryt nuvarande försök
+            } else if (!hasManuallyReloaded) {
+              // Om vi har försökt automatiskt några gånger, ge användaren ett felmeddelande
+              // men bara om användaren inte redan har gjort en manuell omladdning
+              throw new Error('Fick inga projektdata. Klicka på "Ladda om" för att försöka igen.');
+            }
+          }
+          
+          // När vi får giltig data, uppdatera projekten och cache
+          setProjects((projectData as Project[]) || []);
+          saveCachedProjects(projectData as Project[]);
+          // Återställ retry-räknaren vid lyckat resultat
+          setRetryCount(0);
+          
+        } catch (projectErr: any) {
+          console.error("Fel vid hämtning av projekt:", projectErr);
+          setError(projectErr.message || 'Kunde inte hämta projekt.');
         }
-      } catch (err: any) {
-        console.error("Fel vid datahämtning:", err);
-        setError(err.message || 'Ett oväntat fel uppstod.');
-        setUser(null);
-      } finally {
-        setLoading(false); // Säkerställ att loading alltid sätts till false oavsett resultat
+      } catch (profileErr: any) {
+        console.error("Fel vid hämtning av profil:", profileErr);
+        setError(profileErr.message || 'Kunde inte hämta profil.');
       }
-    };
+    } catch (err: any) {
+      console.error("Fel vid datahämtning:", err);
+      setError(err.message || 'Ett oväntat fel uppstod.');
+      setUser(null);
+    } finally {
+      setLoading(false); // Säkerställ att loading alltid sätts till false oavsett resultat
+    }
+  };
+
+  useEffect(() => {
+    // Kontrollera om vi har en force reload-flagga från navigationseventet
+    const shouldForceReload = sessionStorage.getItem('forceReloadProjects') === 'true';
+    if (shouldForceReload) {
+      console.log('Forcerad omladdning av projektsida aktiverad');
+      // Rensa flaggan så den bara används en gång
+      sessionStorage.removeItem('forceReloadProjects');
+      // Visa laddningstillstånd och hämta data igen
+      setLoading(true);
+      setRetryCount(0);
+      setHasManuallyReloaded(false);
+    }
     
-    // Lägg till en timeout för att förhindra upprepade anrop vid nätverksproblem
+    // Starta datahämtning med en kort fördröjning
     const timeoutId = setTimeout(() => {
       fetchData();
     }, 100);
     
     // Städa upp timeout vid komponentavmontering
     return () => clearTimeout(timeoutId);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Preview useEffect ---
   useEffect(() => {
@@ -307,6 +428,28 @@ export default function StartPage() {
 
   // Om användare är inloggad, visa den vanliga dashboarden
   const isAdmin = profile?.is_admin || false;
+
+  // Inloggad användare med eventuellt fel vid datahämtning - visa knapp för att ladda om
+  if (error && user) {
+    return (
+      <div className="min-h-[60vh] flex flex-col justify-center items-center">
+        <div className="bg-white p-6 rounded-lg shadow-md text-center max-w-md">
+          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h2 className="text-xl font-semibold mb-2">Problem att visa projektdata</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={handleManualReload} 
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Ladda om
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="py-8">
       <div className="flex justify-between items-center mb-6 px-4 sm:px-6 lg:px-8">
@@ -320,7 +463,18 @@ export default function StartPage() {
         )}
       </div>
 
-      {error && <p className="text-red-600">Kunde inte ladda projekt: {error}</p>}
+      {error && (
+        <div className="text-center py-6">
+          <p className="text-red-600 mb-4">Kunde inte ladda projekt: {error}</p>
+          <button 
+            onClick={handleManualReload} 
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Försök igen
+          </button>
+        </div>
+      )}
+      
       {!error && projects.length === 0 ? (
         <div className="text-center py-10 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
           <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -345,6 +499,23 @@ export default function StartPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {usedCachedData && (
+            <div className="col-span-full mb-4 bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm text-yellow-800">
+              <p className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                Visar lagrad data. En del information kan vara inaktuell.
+                <button 
+                  onClick={handleManualReload} 
+                  className="ml-2 underline text-blue-600 hover:text-blue-800"
+                >
+                  Uppdatera
+                </button>
+              </p>
+            </div>
+          )}
+          
           {projects.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group">
               <div className="flex h-full">

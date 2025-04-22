@@ -121,10 +121,33 @@ export default function Header() {
     await supabase.auth.signOut();
   };
 
+  // Hjälpfunktion för att forcera omladdning av startsidan
+  const reloadHomePage = () => {
+    // Sätt en sessionStorage-flagga som indikerar att vi ska ladda om projektsidan
+    sessionStorage.setItem('forceReloadProjects', 'true');
+    
+    // Om vi är på startsidan, gör en full sidomladdning
+    if (pathname === '/') {
+      window.location.reload();
+    } else {
+      // Annars navigera till startsidan (kommer att trigga useEffect i page.tsx)
+      router.push('/');
+    }
+  };
+
   return (
     <header className="bg-gray-100 p-4 shadow-md sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Link href="/" className="text-2xl font-bold text-gray-800 hover:text-blue-700">
+        <Link 
+          href="/" 
+          className="text-2xl font-bold text-gray-800 hover:text-blue-700"
+          onClick={(e) => {
+            if (pathname === '/') {
+              e.preventDefault();
+              reloadHomePage();
+            }
+          }}
+        >
           ByggNav
         </Link>
         <nav>
@@ -138,25 +161,12 @@ export default function Header() {
                     Hantera Email
                   </Link>
                 )}
-                <Link 
-                  href="/" 
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
-                  onClick={(e) => {
-                    // Om sidan redan laddas, förhindra ytterligare navigering
-                    if (loading) {
-                      e.preventDefault();
-                      return;
-                    }
-                    
-                    // Om vi redan är på startsidan, ladda om den istället för att navigera
-                    if (pathname === '/') {
-                      e.preventDefault();
-                      window.location.reload();
-                    }
-                  }}
+                <button 
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                  onClick={reloadHomePage}
                 >
                   Projekt
-                </Link>
+                </button>
                 <button 
                     onClick={handleLogout}
                     className="text-sm text-red-600 hover:underline bg-red-50 px-2 py-1 rounded hover:bg-red-100"

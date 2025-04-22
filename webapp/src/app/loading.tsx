@@ -1,7 +1,22 @@
 // webapp/src/app/loading.tsx
 
+'use client';
+
+import { useState, useEffect } from 'react';
+
 // Detta är UI:t som visas medan startsidan laddar sin data
 export default function Loading() {
+  const [isLongLoad, setIsLongLoad] = useState(false);
+  
+  useEffect(() => {
+    // Om laddningen tar mer än 3 sekunder, visa extra meddelande
+    const timeoutId = setTimeout(() => {
+      setIsLongLoad(true);
+    }, 3000);
+    
+    return () => clearTimeout(timeoutId);
+  }, []);
+  
   return (
     <div className="min-h-[80vh] flex flex-col justify-center items-center">
       <div className="w-full max-w-6xl mx-auto">
@@ -18,6 +33,14 @@ export default function Loading() {
             <div className="w-5 h-5 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
             <span className="text-gray-700">Laddar projektdata...</span>
           </div>
+          
+          {/* Visar extra meddelande efter en tidsperiod */}
+          {isLongLoad && (
+            <div className="mt-4 text-amber-600 bg-amber-50 p-3 rounded max-w-md mx-auto">
+              <p>Det tar längre tid än förväntat.</p>
+              <p className="text-sm mt-1">Om sidan inte laddas, försök refresha sidan om några sekunder.</p>
+            </div>
+          )}
         </div>
         
         {/* Skeleton loader för projektlistan */}
