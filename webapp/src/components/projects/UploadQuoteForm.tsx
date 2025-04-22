@@ -33,34 +33,47 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string>(''); // State för användarens email
+  const [isFetchingEmail, setIsFetchingEmail] = useState(true); // Nytt state för email-hämtning
   const router = useRouter();
-
-  // Hämta användarens email när komponenten laddas
-  useEffect(() => {
-    const fetchUserEmail = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        setUserEmail(user.email);
-        // Sätt standardvärde i formuläret när email har hämtats
-        setValue('email', user.email);
-      }
-    };
-    fetchUserEmail();
-  }, []); // Kör bara en gång vid mount
 
   const {
     register,
     handleSubmit,
-    reset,
-    setValue, // Importera setValue för att sätta email
-    formState: { errors },
+    reset, // Använd reset
+    formState: { errors, isSubmitting }, // Lägg till isSubmitting
   } = useForm<QuoteFormData>({
     resolver: zodResolver(quoteSchema),
     defaultValues: {
-      email: '' // Initialt tomt, sätts via useEffect
+      email: '' // Initialt tomt
     }
   });
+
+  // Hämta användarens email och uppdatera formuläret med reset
+  useEffect(() => {
+    let isMounted = true;
+    const fetchUserEmailAndUpdateForm = async () => {
+      setIsFetchingEmail(true);
+      try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (isMounted && user?.email) {
+            // Använd reset för att uppdatera defaultValues efter hämtning
+            reset({ email: user.email }); 
+          }
+      } catch (err) {
+          console.error("Fel vid hämtning av user email:", err);
+          // Hantera eventuellt fel här, visa meddelande?
+      } finally {
+          if (isMounted) {
+            setIsFetchingEmail(false);
+          }
+      }
+    };
+    
+    fetchUserEmailAndUpdateForm();
+    
+    return () => { isMounted = false; }; // Cleanup
+    
+  }, [reset]); // Lägg till reset som beroende
 
   const onSubmit: SubmitHandler<QuoteFormData> = async (data) => {
     setLoading(true);
@@ -103,13 +116,16 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
       }
 
       setSuccessMessage('Offerten har laddats upp!');
-      reset();
-      setUserEmail(''); // Rensa email state? Eller behåll?
-      const fetchedUser = await supabase.auth.getUser(); // Hämta igen för att sätta default på nytt
-      if (fetchedUser.data.user?.email) {
-          setUserEmail(fetchedUser.data.user.email);
-          setValue('email', fetchedUser.data.user.email);
-      }
+      // Reset formuläret *efter* lyckad submit, behåll email som default?
+      const { data: { user } } = await supabase.auth.getUser(); // Hämta igen
+      reset({ 
+          email: user?.email || '', // Sätt tillbaka email
+          quote_file: undefined, // Rensa filinput
+          amount: undefined, // Rensa summa
+          contractor_type: undefined, // Rensa typ
+          company_name: '',
+          phone_number: ''
+      }); 
       router.refresh();
 
     } catch (err: any) {
@@ -118,6 +134,11 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
       setLoading(false);
     }
   };
+
+  // Visa laddningsindikator för e-post om den hämtas
+  if (isFetchingEmail) {
+      return <div className="text-center p-6">Laddar användarinformation...</div>;
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 bg-white p-6 rounded shadow-md border">
@@ -211,8 +232,7 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
           id="email"
           type="email"
           {...register('email')} 
-          defaultValue={userEmail} // Sätt defaultValue från state
-          readOnly // Gör fältet skrivskyddat
+          readOnly // Behåll skrivskyddat
           className={`mt-1 block w-full px-3 py-2 border ${errors.email ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-100 cursor-not-allowed`}
         />
         {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
@@ -224,10 +244,10 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
       <div className="flex justify-end">
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isSubmitting || isFetchingEmail} // Inaktivera om email hämtas
             className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Laddar upp...' : 'Ladda upp offert'}
+            {loading || isSubmitting ? 'Laddar upp...' : 'Ladda upp offert'}
           </button>
       </div>
     </form>
