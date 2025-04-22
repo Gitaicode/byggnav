@@ -142,10 +142,13 @@ export default function Header() {
           href="/" 
           className="text-2xl font-bold text-gray-800 hover:text-blue-700"
           onClick={(e) => {
+            // Om vi redan är på startsidan, forcera omladdning
             if (pathname === '/') {
               e.preventDefault();
               reloadHomePage();
             }
+            // Om vi är på en annan sida, låt Next.js hantera navigeringen
+            // (vilket triggar useEffect i page.tsx via sessionStorage-flaggan)
           }}
         >
           ByggNav
