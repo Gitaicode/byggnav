@@ -39,42 +39,75 @@ export default function Header() {
 
   useEffect(() => {
     let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const fetchInitialData = async () => {
-        try {
-            const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
-            if (sessionError) throw sessionError;
-            if (isMounted) {
-                setSession(initialSession);
-                await fetchProfileAndSetAdmin(initialSession?.user ?? null);
-                setLoading(false);
-            }
-        } catch (error) {
-            console.error("[Header] Initial fetch error:", error);
-             if (isMounted) {
-                setSession(null);
-                setIsAdmin(false);
-                setLoading(false);
-            }
+      try {
+        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error("[Header] Session fetch error:", sessionError);
+          throw sessionError;
         }
+        
+        if (isMounted) {
+          setSession(initialSession);
+          
+          if (initialSession?.user) {
+            try {
+              await fetchProfileAndSetAdmin(initialSession.user);
+            } catch (profileError) {
+              console.error("[Header] Profile fetch error:", profileError);
+              // Fortsätt ändå men markera inte som admin
+              setIsAdmin(false);
+            }
+          } else {
+            setIsAdmin(false);
+          }
+          
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("[Header] Initial fetch error:", error);
+        if (isMounted) {
+          if (retryCount < maxRetries) {
+            console.log(`[Header] Retrying fetch (${retryCount + 1}/${maxRetries})...`);
+            retryCount++;
+            // Använd exponentiell backoff för återförsök
+            setTimeout(fetchInitialData, 1000 * Math.pow(2, retryCount));
+          } else {
+            console.error("[Header] Max retries reached, giving up.");
+            setSession(null);
+            setIsAdmin(false);
+            setLoading(false);
+          }
+        }
+      }
     };
     
     fetchInitialData();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      console.log('[Header] Auth state changed:', event, currentSession?.user.id);
-       if (isMounted) {
-            setSession(currentSession);
-            await fetchProfileAndSetAdmin(currentSession?.user ?? null);
-            if (loading) setLoading(false); 
-            
-            if (event === 'SIGNED_OUT') {
-                if (pathname !== '/login' && pathname !== '/register') {
-                    console.log('[Header] SIGNED_OUT, navigerar till /login från', pathname);
-                    router.push('/login');
-                }
-            }
-       }
+      console.log('[Header] Auth state changed:', event, currentSession?.user?.id || 'ingen användare');
+      if (isMounted) {
+        setSession(currentSession);
+        
+        try {
+          await fetchProfileAndSetAdmin(currentSession?.user ?? null);
+        } catch (error) {
+          console.error("[Header] Profile fetch error during auth change:", error);
+          setIsAdmin(false);
+        }
+        
+        if (loading) setLoading(false);
+        
+        if (event === 'SIGNED_OUT') {
+          if (pathname !== '/login' && pathname !== '/register') {
+            console.log('[Header] SIGNED_OUT, navigerar till /login från', pathname);
+            router.push('/login');
+          }
+        }
+      }
     });
 
     return () => {
@@ -105,7 +138,23 @@ export default function Header() {
                     Hantera Email
                   </Link>
                 )}
-                <Link href="/" className="text-sm text-blue-600 hover:text-blue-800 hover:underline">
+                <Link 
+                  href="/" 
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  onClick={(e) => {
+                    // Om sidan redan laddas, förhindra ytterligare navigering
+                    if (loading) {
+                      e.preventDefault();
+                      return;
+                    }
+                    
+                    // Om vi redan är på startsidan, ladda om den istället för att navigera
+                    if (pathname === '/') {
+                      e.preventDefault();
+                      window.location.reload();
+                    }
+                  }}
+                >
                   Projekt
                 </Link>
                 <button 

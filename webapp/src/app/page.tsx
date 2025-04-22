@@ -28,40 +28,74 @@ export default function StartPage() {
       setError(null);
       try {
         const { data: { user }, error: getUserError } = await supabase.auth.getUser();
-        if (getUserError || !user) {
-          // Nu sätter vi inte fel här, utan låter preview-läget ta över
+        if (getUserError) {
+          console.error("Fel vid hämtning av användare:", getUserError);
+          throw new Error(getUserError.message || 'Kunde inte hämta användardata.');
+        }
+        
+        if (!user) {
           console.log("Ingen användare inloggad, visar preview.");
           setUser(null);
           setLoading(false); // Sätt loading till false så preview kan köras
           return;
         }
+        
         setUser(user);
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, is_admin')
-          .eq('id', user.id)
-          .single();
-        if (profileError || !profileData) {
-          throw new Error(profileError?.message || 'Kunde inte hämta profil.');
+        
+        try {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, is_admin')
+            .eq('id', user.id)
+            .single();
+          
+          if (profileError) {
+            console.error("Fel vid hämtning av profil:", profileError);
+            throw new Error(profileError.message || 'Kunde inte hämta profil.');
+          }
+          
+          if (!profileData) {
+            throw new Error('Kunde inte hitta användarprofil.');
+          }
+          
+          setProfile(profileData);
+          
+          try {
+            const { data: projectData, error: projectsError } = await supabase
+              .from('projects')
+              .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
+              .order('created_at', { ascending: false });
+            
+            if (projectsError) {
+              console.error("Fel vid hämtning av projekt:", projectsError);
+              throw new Error(projectsError.message || 'Kunde inte hämta projekt.');
+            }
+            
+            setProjects((projectData as Project[]) || []);
+          } catch (projectErr: any) {
+            console.error("Fel vid hämtning av projekt:", projectErr);
+            setError(projectErr.message || 'Kunde inte hämta projekt.');
+          }
+        } catch (profileErr: any) {
+          console.error("Fel vid hämtning av profil:", profileErr);
+          setError(profileErr.message || 'Kunde inte hämta profil.');
         }
-        setProfile(profileData);
-        const { data: projectData, error: projectsError } = await supabase
-          .from('projects')
-          .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
-          .order('created_at', { ascending: false });
-        if (projectsError) {
-          throw new Error(projectsError.message || 'Kunde inte hämta projekt.');
-        }
-        setProjects((projectData as Project[]) || []);
       } catch (err: any) {
         console.error("Fel vid datahämtning:", err);
-        setError(err.message);
+        setError(err.message || 'Ett oväntat fel uppstod.');
         setUser(null);
       } finally {
-        setLoading(false);
+        setLoading(false); // Säkerställ att loading alltid sätts till false oavsett resultat
       }
     };
-    fetchData();
+    
+    // Lägg till en timeout för att förhindra upprepade anrop vid nätverksproblem
+    const timeoutId = setTimeout(() => {
+      fetchData();
+    }, 100);
+    
+    // Städa upp timeout vid komponentavmontering
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // --- Preview useEffect ---
