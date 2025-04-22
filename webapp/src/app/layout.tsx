@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { PageReloadProvider } from '@/contexts/PageReloadContext';
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -19,11 +20,13 @@ export default function RootLayout({
   return (
     <html lang="sv" className="bg-white text-gray-900">
       <body className={`${inter.variable} font-sans flex flex-col min-h-screen`}>
-        <Header />
-        <main className="flex-grow container mx-auto p-4">
-          {children}
-        </main>
-        <Footer />
+        <PageReloadProvider>
+          <Header />
+          <main className="flex-grow container mx-auto p-4">
+            {children}
+          </main>
+          <Footer />
+        </PageReloadProvider>
       </body>
     </html>
   );

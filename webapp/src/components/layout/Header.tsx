@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import type { Session, User } from '@supabase/supabase-js';
 import { useRouter, usePathname } from 'next/navigation';
+import { usePageReload } from '@/contexts/PageReloadContext';
 
 export default function Header() {
   const [session, setSession] = useState<Session | null>(null);
@@ -12,6 +13,7 @@ export default function Header() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const { triggerReload } = usePageReload();
 
   const fetchProfileAndSetAdmin = async (user: User | null) => {
     if (!user) {
@@ -119,19 +121,18 @@ export default function Header() {
   const handleLogout = async () => {
     setLoading(true);
     await supabase.auth.signOut();
+    if (pathname !== '/login') {
+        router.push('/login');
+    }
   };
 
-  // Hjälpfunktion för att forcera omladdning av startsidan
-  const reloadHomePage = () => {
-    // Sätt en sessionStorage-flagga som indikerar att vi ska ladda om projektsidan
-    sessionStorage.setItem('forceReloadProjects', 'true');
-    
-    // Om vi är på startsidan, gör en full sidomladdning
+  const handleHomeNavigation = (e: React.MouseEvent) => {
     if (pathname === '/') {
-      window.location.reload();
+      e.preventDefault();
+      console.log('Är på /, anropar triggerReload via context');
+      triggerReload();
     } else {
-      // Annars navigera till startsidan (kommer att trigga useEffect i page.tsx)
-      router.push('/');
+      console.log('Navigerar till / via Link');
     }
   };
 
@@ -141,15 +142,7 @@ export default function Header() {
         <Link 
           href="/" 
           className="text-2xl font-bold text-gray-800 hover:text-blue-700"
-          onClick={(e) => {
-            // Om vi redan är på startsidan, forcera omladdning
-            if (pathname === '/') {
-              e.preventDefault();
-              reloadHomePage();
-            }
-            // Om vi är på en annan sida, låt Next.js hantera navigeringen
-            // (vilket triggar useEffect i page.tsx via sessionStorage-flaggan)
-          }}
+          onClick={handleHomeNavigation}
         >
           ByggNav
         </Link>
@@ -164,12 +157,13 @@ export default function Header() {
                     Hantera Email
                   </Link>
                 )}
-                <button 
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline bg-transparent border-0 p-0 cursor-pointer"
-                  onClick={reloadHomePage}
+                <Link 
+                  href="/"
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  onClick={handleHomeNavigation}
                 >
-                  Projekt
-                </button>
+                   Projekt
+                </Link>
                 <button 
                     onClick={handleLogout}
                     className="text-sm text-red-600 hover:underline bg-red-50 px-2 py-1 rounded hover:bg-red-100"
