@@ -99,36 +99,47 @@ export default function StartPage() {
 
     try {
       // 1. Get User (using recommended getUser)
-      // Deklarera variabeln här för att undvika redeklaration
-      let userToProcess: any = null; 
-      const { data: userData, error: getUserError } = await supabase.auth.getUser();
+      const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
 
-      // Handle AuthError (session missing/invalid)
+      // Handle AuthError specifically
       if (getUserError) {
-        console.error("Supabase getUser error:", getUserError);
-        setUser(null); setProfile(null); setProjects([]);
-        localStorage.removeItem('cachedProjects');
-        setUsedCachedData(false);
-        setError('Din session är ogiltig eller har gått ut. Vänligen logga in igen.');
-        return; // Exit fetch early, finally block will run
+        // Kontrollera om felet *verkligen* betyder "ingen session" vs. ett annat problem
+        // Ett vanligt tecken är att user är null *trots* felet, eller specifika felmeddelanden/statuskoder.
+        // Supabase kastar ofta ett fel men user kan vara null.
+        // Om user är null OCH det finns ett error, antar vi att det beror på avsaknad av session.
+        if (!currentUser) {
+            console.log("getUser error men ingen user, antar utloggad.");
+            setUser(null); setProfile(null); setProjects([]);
+            // VIKTIGT: Sätt INTE error state här, låt renderingslogiken hantera !user
+            return; // Avsluta fetchData, finally körs.
+        } else {
+            // Om vi får ett fel MEN user *inte* är null, är det ett oväntat problem.
+            console.error("Supabase getUser error (oväntat):", getUserError);
+            setError('Kunde inte verifiera din session. Försök igen senare.');
+            // Nollställ allt eftersom vi inte kan lita på sessionen?
+            setUser(null); setProfile(null); setProjects([]);
+            localStorage.removeItem('cachedProjects');
+            setUsedCachedData(false);
+            return; // Avsluta fetchData, finally körs.
+        }
       }
 
-      // Handle case where getUser succeeds but returns null user
-      if (!userData?.user) { // Kolla på userData.user
-        console.warn("getUser returnerade null user utan error, behandlar som utloggad.");
+      // Handle case where getUser succeeds *without* error, but returns null user
+      if (!currentUser) {
+        console.warn("getUser lyckades men returnerade null user, behandlar som utloggad.");
         setUser(null); setProfile(null); setProjects([]);
-        return; // Exit fetch early, finally block will run
+        // Sätt inte error här heller.
+        return; // Avsluta fetchData, finally körs.
       }
 
-      // Valid user found - tilldela till variabeln
-      userToProcess = userData.user;
-      setUser(userToProcess);
+      // Valid user found
+      setUser(currentUser);
 
       // 2. Get Profile
       let fetchedProfileData: Profile | null = null;
       try {
         const { data: profileDataResult, error: profileError } = await supabase
-          .from('profiles').select('id, is_admin').eq('id', userToProcess.id).single(); // Använd userToProcess
+          .from('profiles').select('id, is_admin').eq('id', currentUser.id).single(); // Använd currentUser
         if (profileError) throw profileError;
         if (!profileDataResult) throw new Error('Kunde inte hitta användarprofil.');
         fetchedProfileData = profileDataResult;
