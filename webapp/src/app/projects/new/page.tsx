@@ -98,7 +98,7 @@ export default function NewProjectPage() {
         throw insertError;
       }
 
-      router.push('/dashboard');
+      router.push('/');
       router.refresh();
 
     } catch (err: any) {
