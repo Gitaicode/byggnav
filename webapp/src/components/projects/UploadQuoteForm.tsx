@@ -90,23 +90,27 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
       const { error: uploadError } = await supabase.storage.from('quotes').upload(filePath, file);
       if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
 
-      // 2. Hämta användar-ID (behövs fortfarande för user_id)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Ingen användare inloggad');
+      // 2. Hämta användar-ID (för user_id)
+      const { data: { user: submitUser }, error: submitUserError } = await supabase.auth.getUser();
+      if (submitUserError) {
+          console.error("Kunde inte hämta användare vid submit:", submitUserError);
+          throw new Error('Kunde inte verifiera användare.');
+      }
+      if (!submitUser) throw new Error('Ingen användare inloggad');
 
-      // 3. Spara metadata i databasen - Uppdaterad
+      // 3. Spara metadata i databasen
       const { error: insertError } = await supabase
         .from('quotes')
-        .insert({
+        .insert({ 
           project_id: projectId,
-          user_id: user.id,
+          user_id: submitUser.id,
           contractor_type: data.contractor_type,
           amount: data.amount,
           file_path: filePath,
           file_name: file.name,
-          company_name: data.company_name || null, // Spara nya fält
+          company_name: data.company_name || null, 
           phone_number: data.phone_number || null,
-          email: data.email, // Spara email
+          email: data.email, 
         });
 
       if (insertError) {
@@ -116,13 +120,18 @@ export default function UploadQuoteForm({ projectId }: UploadQuoteFormProps) {
       }
 
       setSuccessMessage('Offerten har laddats upp!');
-      // Reset formuläret *efter* lyckad submit, behåll email som default?
-      const { data: { user } } = await supabase.auth.getUser(); // Hämta igen
+      
+      // Hämta användarinfo igen för att återställa e-postfältet korrekt
+      const { data: { user: resetUser }, error: resetUserError } = await supabase.auth.getUser();
+      if (resetUserError) {
+          console.error("Kunde inte hämta användardata efter submit för reset:", resetUserError);
+      }
+      
       reset({ 
-          email: user?.email || '', // Sätt tillbaka email
-          quote_file: undefined, // Rensa filinput
-          amount: undefined, // Rensa summa
-          contractor_type: undefined, // Rensa typ
+          email: resetUser?.email || '',
+          quote_file: undefined, 
+          amount: undefined, 
+          contractor_type: undefined, 
           company_name: '',
           phone_number: ''
       }); 

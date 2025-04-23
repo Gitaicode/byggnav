@@ -8,6 +8,7 @@ import { Quote, Profile, Project } from '@/lib/types'; // Importera typer
 import Image from 'next/image'; // Importera Image
 import Loading from '@/app/loading'; // Importera Loading komponenten
 import { usePageReload } from '@/contexts/PageReloadContext'; // Importera context hook
+import { AuthError } from '@supabase/supabase-js'; // Importera AuthError
 
 // Byt namn på komponenten för att matcha filnamnet (valfritt men bra praxis)
 export default function StartPage() {
@@ -29,21 +30,7 @@ export default function StartPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Cache-relaterade funktioner
-  const saveCachedProjects = (projectData: Project[]) => {
-    // Spara även tom lista för att representera ett tomt state
-    try {
-      const cacheData = {
-        timestamp: new Date().getTime(),
-        projects: projectData
-      };
-      localStorage.setItem('cachedProjects', JSON.stringify(cacheData));
-      console.log('Projektdata sparad i cache');
-    } catch (err) {
-      console.error('Kunde inte spara projekt i cache:', err);
-    }
-  };
-
-  const getCachedProjects = (): Project[] | null => {
+  const getCachedProjects = useCallback((): Project[] | null => {
     try {
       const cachedData = localStorage.getItem('cachedProjects');
       if (!cachedData) return null;
@@ -71,7 +58,21 @@ export default function StartPage() {
       console.error('Fel vid hämtning av cachad projektdata:', err);
       return null;
     }
-  };
+  }, []);
+
+  const saveCachedProjects = useCallback((projectData: Project[]) => {
+    // Spara även tom lista för att representera ett tomt state
+    try {
+      const cacheData = {
+        timestamp: new Date().getTime(),
+        projects: projectData
+      };
+      localStorage.setItem('cachedProjects', JSON.stringify(cacheData));
+      console.log('Projektdata sparad i cache');
+    } catch (err) {
+      console.error('Kunde inte spara projekt i cache:', err);
+    }
+  }, []);
 
   // Funktion för manuell omladdning (kan anropas från felmeddelande)
   const handleManualReload = useCallback(() => {
@@ -97,36 +98,40 @@ export default function StartPage() {
     }
 
     try {
-      // 1. Hämta användare
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      // Hantera specifikt "Auth session missing!" eller liknande session-fel
-      if (sessionError || !session) {
-          console.error("Supabase session error or session missing:", sessionError);
-          setUser(null); // Logga ut användaren state-mässigt
-          setProfile(null);
-          setProjects([]);
-          // Sätt ett specifikt felmeddelande om sessionen saknas
-          setError('Din session verkar ha gått ut. Prova att logga in igen.'); 
-          setLoading(false);
-          // Rensa cachen om sessionen är borta?
-          localStorage.removeItem('cachedProjects');
-          // Omdirigera till login?
-          // router.push('/login'); // Överväg detta
-          return;
+      // 1. Get User (using recommended getUser)
+      // Deklarera variabeln här för att undvika redeklaration
+      let userToProcess: any = null; 
+      const { data: userData, error: getUserError } = await supabase.auth.getUser();
+
+      // Handle AuthError (session missing/invalid)
+      if (getUserError) {
+        console.error("Supabase getUser error:", getUserError);
+        setUser(null); setProfile(null); setProjects([]);
+        localStorage.removeItem('cachedProjects');
+        setUsedCachedData(false);
+        setError('Din session är ogiltig eller har gått ut. Vänligen logga in igen.');
+        return; // Exit fetch early, finally block will run
       }
-      
-      const currentUser = session.user;
-      setUser(currentUser);
-      
-      // 2. Hämta profil (resten av logiken som tidigare)
-      let fetchedProfileData: Profile | null = null; 
+
+      // Handle case where getUser succeeds but returns null user
+      if (!userData?.user) { // Kolla på userData.user
+        console.warn("getUser returnerade null user utan error, behandlar som utloggad.");
+        setUser(null); setProfile(null); setProjects([]);
+        return; // Exit fetch early, finally block will run
+      }
+
+      // Valid user found - tilldela till variabeln
+      userToProcess = userData.user;
+      setUser(userToProcess);
+
+      // 2. Get Profile
+      let fetchedProfileData: Profile | null = null;
       try {
         const { data: profileDataResult, error: profileError } = await supabase
-          .from('profiles').select('id, is_admin').eq('id', currentUser.id).single();
+          .from('profiles').select('id, is_admin').eq('id', userToProcess.id).single(); // Använd userToProcess
         if (profileError) throw profileError;
         if (!profileDataResult) throw new Error('Kunde inte hitta användarprofil.');
-        fetchedProfileData = profileDataResult; 
+        fetchedProfileData = profileDataResult;
         setProfile(fetchedProfileData);
       } catch (profileErr: any) {
         console.error("Fel vid hämtning av profil:", profileErr);
@@ -140,7 +145,7 @@ export default function StartPage() {
         }
       }
       
-      // 3. Hämta projekt (resten av logiken som tidigare)
+      // 3. Get Projects
       try {
         const { data: projectDataResult, error: projectsError } = await supabase
           .from('projects')
@@ -202,7 +207,7 @@ export default function StartPage() {
     } finally {
       setLoading(false);
     }
-  }, [retryCount, hasManuallyReloaded]); // Ta bort reloadTrigger härifrån, hanteras i nästa useEffect
+  }, [retryCount, hasManuallyReloaded, getCachedProjects, saveCachedProjects, error]);
 
   // Effekt för att trigga datahämtning vid montering OCH vid context-trigger
   useEffect(() => {
@@ -253,7 +258,7 @@ export default function StartPage() {
 
   // Felhantering (behåll den förbättrade från tidigare)
   if (error && !usedCachedData) {
-    const isSessionError = error.toLowerCase().includes('session');
+    const isSessionError = error.toLowerCase().includes('session') || error.toLowerCase().includes('logga in');
     return (
       <div className="min-h-[60vh] flex flex-col justify-center items-center">
         <div className="bg-white p-6 rounded-lg shadow-md text-center max-w-md">
@@ -478,7 +483,7 @@ export default function StartPage() {
       {error && usedCachedData && (
           <div className="px-4 sm:px-6 lg:px-8 mb-4">
               <div className="col-span-full bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-800">
-                  <p>Kunde inte hämta senaste data ({error}). Visar lagrad data.</p>
+                  <p>Kunde inte hämta senaste data. Visar lagrad information. Fel: {error}</p> {/* Visa felet för felsökning */}
               </div>
           </div>
       )}
