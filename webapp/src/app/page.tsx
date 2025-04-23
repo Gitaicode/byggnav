@@ -86,7 +86,7 @@ export default function StartPage() {
   }, []);
 
   // Datahämtningsfunktion
-  const fetchData = useCallback(async (isTriggeredByReload = false) => { // Lägg till parameter
+  const fetchData = useCallback(async (isTriggeredByReload = false) => {
     // Logga om anropet kom från context-triggern
     console.log(`fetchData körs (retry: ${retryCount}, manuell: ${hasManuallyReloaded}, contextTrigger: ${isTriggeredByReload})`);
     setLoading(true);
@@ -98,40 +98,39 @@ export default function StartPage() {
     }
 
     try {
-      // 1. Get User (using recommended getUser)
+      // 1. Get User
+      console.log("[fetchData] Attempting supabase.auth.getUser()...");
       const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
+      console.log("[fetchData] getUser() completed. Error:", getUserError, "User:", currentUser);
 
-      // Handle AuthError specifically
       if (getUserError) {
-        // Kontrollera om felet *verkligen* betyder "ingen session" vs. ett annat problem
-        // Ett vanligt tecken är att user är null *trots* felet, eller specifika felmeddelanden/statuskoder.
-        // Supabase kastar ofta ett fel men user kan vara null.
-        // Om user är null OCH det finns ett error, antar vi att det beror på avsaknad av session.
+        console.error("[fetchData] Supabase getUser error:", getUserError);
         if (!currentUser) {
-            console.log("getUser error men ingen user, antar utloggad.");
-            setUser(null); setProfile(null); setProjects([]);
-            // VIKTIGT: Sätt INTE error state här, låt renderingslogiken hantera !user
-            return; // Avsluta fetchData, finally körs.
-        } else {
-            // Om vi får ett fel MEN user *inte* är null, är det ett oväntat problem.
-            console.error("Supabase getUser error (oväntat):", getUserError);
-            setError('Kunde inte verifiera din session. Försök igen senare.');
-            // Nollställ allt eftersom vi inte kan lita på sessionen?
+            console.log("[fetchData] getUser error but no user, treating as logged out.");
             setUser(null); setProfile(null); setProjects([]);
             localStorage.removeItem('cachedProjects');
             setUsedCachedData(false);
-            return; // Avsluta fetchData, finally körs.
+            // Don't set error here, let the !user block handle rendering
+            // setLoading(false); // Let finally handle this
+            return;
+        } else {
+            console.error("[fetchData] Supabase getUser error (unexpected, user exists?):", getUserError);
+            setError('Kunde inte verifiera din session. Försök igen senare.');
+            setUser(null); setProfile(null); setProjects([]);
+            localStorage.removeItem('cachedProjects');
+            setUsedCachedData(false);
+            // setLoading(false); // Let finally handle this
+            return;
         }
       }
 
-      // Handle case where getUser succeeds *without* error, but returns null user
       if (!currentUser) {
-        console.warn("getUser lyckades men returnerade null user, behandlar som utloggad.");
+        console.warn("[fetchData] getUser succeeded but returned null user, treating as logged out.");
         setUser(null); setProfile(null); setProjects([]);
-        // Sätt inte error här heller.
-        return; // Avsluta fetchData, finally körs.
+        // setLoading(false); // Let finally handle this
+        return;
       }
-
+      
       // Valid user found
       setUser(currentUser);
 
@@ -203,8 +202,10 @@ export default function StartPage() {
       }
       
     } catch (err: any) {
-      console.error("Övergripande fel vid datahämtning:", err);
-      setError(err.message || 'Ett oväntat fel uppstod.');
+      console.error("[fetchData] Caught error in main try block:", err);
+      if (!error && !(err.message.includes('session') || err.message.includes('logga in'))) {
+            setError(err.message || 'Ett oväntat fel uppstod.');
+      }
       const cachedProjects = getCachedProjects();
       if (cachedProjects && !isTriggeredByReload) { // Använd inte cache vid triggerReload
         console.warn('Generellt fel, använder cachade projekt.');
@@ -216,9 +217,11 @@ export default function StartPage() {
         }
       }
     } finally {
+      // *** Add explicit log here ***
+      console.log("[fetchData] Entering finally block. Setting loading to false.");
       setLoading(false);
     }
-  }, [retryCount, hasManuallyReloaded, getCachedProjects, saveCachedProjects, error]);
+  }, [retryCount, hasManuallyReloaded, getCachedProjects, saveCachedProjects, error, loading]);
 
   // Effekt för att trigga datahämtning vid montering OCH vid context-trigger
   useEffect(() => {
