@@ -243,12 +243,56 @@ export default function StartPage() {
 
   }, [reloadTrigger, fetchData]); // Lägg till fetchData som beroende här
 
-  // --- Preview useEffect --- (Se över beroenden här också?)
+  // Effekt för preview-data (när utloggad)
   useEffect(() => {
-    // Kör bara om user är null OCH initial loading (från main fetch) är klar
-    if (user !== null || loading) return;
-    // ... (resten av preview-logiken) ...
-  }, [user, loading]); // Beroenden verkar ok här
+    if (user !== null || loading) return; 
+
+    const fetchPreviewData = async () => {
+      console.log("Kör fetchPreviewData..."); // Logga start
+      setPreviewLoading(true); setPreviewError(null);
+      try {
+        console.log("Hämtar preview-projekt...");
+        const { data: projectData, error: projectsError } = await supabase
+          .from('projects')
+          .select('id, title, category, client_name, area, gross_floor_area, start_date, tender_document_url, building_image_url')
+          .limit(3);
+        
+        // Logga specifikt projekt-felet
+        if (projectsError) {
+            console.error("Fel vid hämtning av preview-projekt:", projectsError);
+            throw new Error(`Projektfel: ${projectsError.message}`); 
+        }
+        console.log(`Hämtade ${projectData?.length ?? 0} preview-projekt.`);
+        setPreviewProjects(projectData || []);
+
+        const projectIds = (projectData || []).map(p => p.id).filter(Boolean);
+        if (projectIds.length > 0) {
+          console.log("Hämtar preview-offerter för projekt-IDs:", projectIds);
+          const { data: quoteData, error: quotesError } = await supabase
+            .from('quotes').select('id, project_id, contractor_type').in('project_id', projectIds);
+            
+          // Logga specifikt offert-felet
+          if (quotesError) {
+            console.error("Fel vid hämtning av preview-offerter:", quotesError);
+            throw new Error(`Offertfel: ${quotesError.message}`);
+          }
+          console.log(`Hämtade ${quoteData?.length ?? 0} preview-offerter.`);
+          setPreviewQuotes(quoteData || []);
+        } else {
+          console.log("Inga projekt-IDs att hämta offerter för.");
+          setPreviewQuotes([]);
+        }
+      } catch (err: any) {
+        // Förbättrad loggning i catch
+        console.error("Allvarligt fel i fetchPreviewData:", err);
+        setPreviewError(err.message || 'Kunde inte ladda förhandsgranskning på grund av ett oväntat fel.');
+      } finally {
+        console.log("fetchPreviewData finally block, sätter previewLoading till false.");
+        setPreviewLoading(false);
+      }
+    };
+    fetchPreviewData();
+  }, [user, loading]); // Beroenden är korrekta
 
   // --- Preview useMemo ---
   const offerCountByProject = useMemo(() => {
