@@ -116,7 +116,7 @@ export default function Header() {
       isMounted = false;
       authListener?.subscription.unsubscribe();
     };
-  }, [router, pathname, loading]);
+  }, [router, pathname]);
 
   const handleLogout = async () => {
     setLoading(true);

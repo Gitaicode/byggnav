@@ -1,6 +1,6 @@
 'use client'; // Gör om till klientkomponent för att använda hooks
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client'; // Använd klient-klient
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,6 +22,9 @@ export default function StartPage() {
   const [usedCachedData, setUsedCachedData] = useState(false);
   const router = useRouter();
   const { reloadTrigger } = usePageReload(); // Hämta reloadTrigger från context
+
+  // --- Ref för att spåra fetchData-instansen ---
+  const fetchDataRef = useRef<typeof fetchData | null>(null); // Initiera med null eller en initial funktion
 
   // --- Preview states/hooks på toppnivå ---
   const [previewProjects, setPreviewProjects] = useState<Partial<Project>[]>([]);
@@ -225,6 +228,16 @@ export default function StartPage() {
 
   // Effekt för att trigga datahämtning vid montering OCH vid context-trigger
   useEffect(() => {
+    // *** Lägg till loggning för att spåra fetchData-instans ***
+    if (fetchDataRef.current && fetchDataRef.current !== fetchData) {
+      console.log('!!! Huvud-useEffect: fetchData function instance HAR ÄNDRATS!');
+    } else if (!fetchDataRef.current) {
+      console.log('--- Huvud-useEffect: fetchData ref initieras.');
+    } else {
+      console.log('--- Huvud-useEffect: fetchData function instance är STABIL.');
+    }
+    fetchDataRef.current = fetchData; // Uppdatera refen
+
     console.log(`Huvud-useEffect körs. reloadTrigger: ${reloadTrigger}`);
     // Anropa fetchData och skicka med info om det var triggern som orsakade det
     // Vi kollar om reloadTrigger är > 0 för att veta om det är en *ny* trigger
