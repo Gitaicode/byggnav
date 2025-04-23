@@ -221,7 +221,7 @@ export default function StartPage() {
       console.log("[fetchData] Entering finally block. Setting loading to false.");
       setLoading(false);
     }
-  }, [retryCount, hasManuallyReloaded, getCachedProjects, saveCachedProjects, error, loading]);
+  }, [retryCount, hasManuallyReloaded]); // Korrigerad beroendelista
 
   // Effekt för att trigga datahämtning vid montering OCH vid context-trigger
   useEffect(() => {
