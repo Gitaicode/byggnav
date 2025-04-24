@@ -99,7 +99,6 @@ export default function NewProjectPage() {
       }
 
       router.push('/');
-      router.refresh();
 
     } catch (err: any) {
       console.error('Error creating project:', err);
