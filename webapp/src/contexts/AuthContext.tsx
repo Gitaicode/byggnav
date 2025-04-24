@@ -92,11 +92,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         console.log('[AuthProvider] Auth state changed, event:', _event, 'user:', newUser?.id);
         
-        // *** OPTIMIZATION: Only fetch profile if the user actually changed ***
-        if (userChanged) {
+        // *** OPTIMIZATION: Only fetch profile if the user ID actually changed ***
+        if (userChanged && newUser) { // Kontrollera även att newUser inte är null
             console.log('[AuthProvider] User ID changed, fetching profile...');
             await fetchProfileAndSetAdmin(newUser);
-        } else {
+        } else if (!userChanged) {
              console.log('[AuthProvider] User ID same or null, skipping profile fetch on this event.');
         }
         

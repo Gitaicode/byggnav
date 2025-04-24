@@ -1,6 +1,6 @@
 'use client'; // Gör om till klientkomponent för att använda hooks
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client'; // Använd klient-klient
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,9 @@ export default function StartPage() {
   const [previewQuotes, setPreviewQuotes] = useState<Partial<Quote>[]>([]);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // Ta bort fetchDataRef
+  const isFetchingRef = useRef(false); // Ref för att spåra om fetchData körs
 
   // Cache-relaterade funktioner
   const getCachedProjects = useCallback((): Project[] | null => {
@@ -74,8 +77,17 @@ export default function StartPage() {
     }
   }, []);
 
-  // --- Anpassad fetchData --- 
+  // --- Anpassad fetchData med isFetching-kontroll --- 
   const fetchData = useCallback(async () => {
+    // Kolla om en hämtning redan pågår
+    if (isFetchingRef.current) {
+      console.log("[fetchData] Avbryter körning, en hämtning pågår redan.");
+      return;
+    }
+
+    // Sätt flaggan att hämtning pågår
+    isFetchingRef.current = true;
+
     // Använder 'user' från context direkt
     console.log(`[fetchData] Körs. User from context: ${user?.id ?? 'null'}`);
     setLoadingData(true); // Använd det nya state-namnet
@@ -129,6 +141,8 @@ export default function StartPage() {
     } finally {
         console.log("[fetchData] Entering finally block.");
         setLoadingData(false);
+        // Återställ flaggan när hämtningen är klar (eller misslyckades)
+        isFetchingRef.current = false; 
     }
   // Beroende: Kör om när user-objektet från context ändras
   }, [user, getCachedProjects, saveCachedProjects]); 
@@ -144,8 +158,8 @@ export default function StartPage() {
     console.log("[Main useEffect] AuthProvider klar, anropar fetchData.");
     fetchData();
 
-  // Beroenden: Kör när auth är klar, eller när användaren ändras
-  }, [loadingAuth, user]); // Byt från fetchData till user direkt
+  // Beroenden: Kör när auth är klar, eller när fetchData ändras (pga user)
+  }, [loadingAuth, fetchData]); // Behåll fetchData här
 
   // --- Anpassad useEffect för preview-data --- 
   useEffect(() => {
