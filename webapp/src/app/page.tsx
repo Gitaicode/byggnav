@@ -158,8 +158,8 @@ export default function StartPage() {
     console.log("[Main useEffect] AuthProvider klar, anropar fetchData.");
     fetchData();
 
-  // Beroenden: Kör när auth är klar, eller när fetchData ändras (pga user)
-  }, [loadingAuth, fetchData]); // Behåll fetchData här
+  // Beroenden: Kör när auth är klar, eller när användaren ändras.
+  }, [loadingAuth, user]); // Ta bort fetchData från beroenden igen.
 
   // --- Anpassad useEffect för preview-data --- 
   useEffect(() => {
