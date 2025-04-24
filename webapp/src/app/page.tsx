@@ -1,30 +1,27 @@
 'use client'; // Gör om till klientkomponent för att använda hooks
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client'; // Använd klient-klient
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Quote, Profile, Project } from '@/lib/types'; // Importera typer
 import Image from 'next/image'; // Importera Image
 import Loading from '@/app/loading'; // Importera Loading komponenten
-import { usePageReload } from '@/contexts/PageReloadContext'; // Importera context hook
+import { useAuth } from '@/contexts/AuthContext'; // Importera useAuth
 import { AuthError } from '@supabase/supabase-js'; // Importera AuthError
 
 // Byt namn på komponenten för att matcha filnamnet (valfritt men bra praxis)
 export default function StartPage() {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // Auth state från context
+  const { user, isAdmin, loadingAuth } = useAuth(); 
+
+  // Behåll state för projekt, laddning av projektdata, fel etc.
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(true); // Byt namn från loading för tydlighet?
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [hasManuallyReloaded, setHasManuallyReloaded] = useState(false);
   const [usedCachedData, setUsedCachedData] = useState(false);
   const router = useRouter();
-  const { reloadTrigger } = usePageReload(); // Hämta reloadTrigger från context
-
-  // --- Ref för att spåra fetchData-instansen ---
-  const fetchDataRef = useRef<typeof fetchData | null>(null); // Initiera med null eller en initial funktion
 
   // --- Preview states/hooks på toppnivå ---
   const [previewProjects, setPreviewProjects] = useState<Partial<Project>[]>([]);
@@ -77,242 +74,140 @@ export default function StartPage() {
     }
   }, []);
 
-  // Funktion för manuell omladdning (kan anropas från felmeddelande)
-  const handleManualReload = useCallback(() => {
-    console.log('Manuell omladdning initierad (handleManualReload)');
-    setLoading(true);
+  // --- Anpassad fetchData --- 
+  const fetchData = useCallback(async () => {
+    // Använder 'user' från context direkt
+    console.log(`[fetchData] Körs. User from context: ${user?.id ?? 'null'}`);
+    setLoadingData(true); // Använd det nya state-namnet
     setError(null);
-    setRetryCount(0);
-    setHasManuallyReloaded(true);
     setUsedCachedData(false);
-    // fetchData kommer att köras via useEffect när hasManuallyReloaded ändras
-  }, []);
 
-  // Datahämtningsfunktion
-  const fetchData = useCallback(async (isTriggeredByReload = false) => {
-    // Logga om anropet kom från context-triggern
-    console.log(`fetchData körs (retry: ${retryCount}, manuell: ${hasManuallyReloaded}, contextTrigger: ${isTriggeredByReload})`);
-    setLoading(true);
-    setError(null);
-    // Återställ bara usedCachedData om det *inte* är en manuell reload (som kan vara avsiktlig på cachad data)
-    // och om det *inte* är en trigger-reload (då vi vill ha färsk data)
-    if (!hasManuallyReloaded && !isTriggeredByReload) {
-      setUsedCachedData(false);
+    if (!user) {
+      console.log("[fetchData] Ingen användare i context. Visar preview/utloggat läge.");
+      setProjects([]); // Nollställ projekt om användaren loggat ut
+      localStorage.removeItem('cachedProjects'); // Rensa cache vid utloggning
+      setLoadingData(false);
+      // fetchPreviewData kommer att köras via sin egen useEffect
+      return;
     }
 
+    // Användaren är inloggad (user finns i context)
     try {
-      // 1. Get User
-      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting supabase.auth.getUser()...`);
-      const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
-      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] getUser() completed. Error:`, getUserError, "User:", currentUser);
-
-      if (getUserError) {
-        console.error("[fetchData] Supabase getUser error:", getUserError);
-        if (!currentUser) {
-            console.log("[fetchData] getUser error but no user, treating as logged out.");
-            setUser(null); setProfile(null); setProjects([]);
-            localStorage.removeItem('cachedProjects');
-            setUsedCachedData(false);
-            // Don't set error here, let the !user block handle rendering
-            // setLoading(false); // Let finally handle this
-            return;
-        } else {
-            console.error("[fetchData] Supabase getUser error (unexpected, user exists?):", getUserError);
-            setError('Kunde inte verifiera din session. Försök igen senare.');
-            setUser(null); setProfile(null); setProjects([]);
-            localStorage.removeItem('cachedProjects');
-            setUsedCachedData(false);
-            // setLoading(false); // Let finally handle this
-            return;
-        }
-      }
-
-      if (!currentUser) {
-        console.warn("[fetchData] getUser succeeded but returned null user, treating as logged out.");
-        setUser(null); setProfile(null); setProjects([]);
-        // setLoading(false); // Let finally handle this
-        return;
-      }
-      
-      // Valid user found
-      setUser(currentUser);
-
-      // 2. Get Profile
-      let fetchedProfileData: Profile | null = null;
-      try {
-        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch profile for user: ${currentUser.id}`);
-        const { data: profileDataResult, error: profileError } = await supabase
-          .from('profiles').select('id, is_admin').eq('id', currentUser.id).single(); // Använd currentUser
-        if (profileError) throw profileError;
-        if (!profileDataResult) throw new Error('Kunde inte hitta användarprofil.');
-        fetchedProfileData = profileDataResult;
-        setProfile(fetchedProfileData);
-        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Profile fetched successfully:`, fetchedProfileData);
-      } catch (profileErr: any) {
-        console.error("[fetchData] Fel vid hämtning av profil:", profileErr);
-        const cachedProjects = getCachedProjects();
-        if (cachedProjects && !isTriggeredByReload) { // Använd inte cache vid triggerReload
-          console.warn('Profilhämtning misslyckades, använder cachade projekt.');
-          setProjects(cachedProjects); setUsedCachedData(true); setLoading(false);
-          return; 
-        } else {
-          throw new Error(profileErr.message || 'Kunde inte hämta profil.');
-        }
-      }
-      
-      // 3. Get Projects
-      try {
-        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch projects...`);
+        // Profil/isAdmin hämtas nu i AuthProvider, behövs inte här
+        // Om specifik profilinfo behövs utöver isAdmin, kan den hämtas här
+        // const { data: profileDataResult... } = await supabase...;
+        // setProfile(profileDataResult);
+        
+        // Försök hämta projekt
+        console.log(`[fetchData] Användare ${user.id} inloggad. Försöker hämta projekt...`);
         const { data: projectDataResult, error: projectsError } = await supabase
           .from('projects')
           .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
           .order('created_at', { ascending: false });
-        
+
         if (projectsError) throw projectsError;
-        
-        const projectData = projectDataResult || []; // Säkerställ att det är en array
 
-        if (projectData.length === 0) {
-          console.warn("Projekthämtning gav tomt resultat (0 projekt).");
-          const cachedProjects = getCachedProjects();
-          if (cachedProjects && !isTriggeredByReload && !hasManuallyReloaded) {
-            console.log('Använder cachad projektdata pga tomt svar (ej manuell/trigger reload).');
-            setProjects(cachedProjects); setUsedCachedData(true); setLoading(false);
-            return;
-          } else if (retryCount < 2 && !hasManuallyReloaded && !isTriggeredByReload) {
-            console.log(`Tomt svar, försöker igen automatiskt (${retryCount + 1}/2)...`);
-            setRetryCount(prev => prev + 1);
-            setLoading(false); 
-            return;
-          } else {
-             console.log('Visar tom projektlista efter retries/manuell/trigger reload.');
-             setProjects([]); saveCachedProjects([]); setRetryCount(0);
-          }
-        } else {
-          console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Projects fetched successfully. Count: ${projectData.length}`);
-          setProjects(projectData as Project[]); saveCachedProjects(projectData as Project[]);
-          setRetryCount(0); setHasManuallyReloaded(false);
-        }
-        
-      } catch (projectErr: any) {
-         // ... (samma felhantering som förut, ev. fallback till cache) ...
-        console.error("Fel vid hämtning av projekt:", projectErr);
-        const cachedProjects = getCachedProjects();
-        if (cachedProjects && !isTriggeredByReload) { // Använd inte cache vid triggerReload
-          console.warn('Projekthämtning misslyckades, använder cachade projekt.');
-          setProjects(cachedProjects); setUsedCachedData(true); setLoading(false);
-          return;
-        } else {
-          console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch projects after profile error...`);
-          throw new Error(projectErr.message || 'Kunde inte hämta projekt.');
-        }
-      }
-      
-    } catch (err: any) {
-      console.error(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Caught error in main try block:`, err);
-      if (!error && !(err.message.includes('session') || err.message.includes('logga in'))) {
-            setError(err.message || 'Ett oväntat fel uppstod.');
-      }
-      const cachedProjects = getCachedProjects();
-      if (cachedProjects && !isTriggeredByReload) { // Använd inte cache vid triggerReload
-        console.warn('Generellt fel, använder cachade projekt.');
-        setProjects(cachedProjects); setUsedCachedData(true);
-      } else {
-        // Om sessionen försvann fångas det tidigare, annars nollställ om ingen cache
-        if (!error?.includes('session')) { // Undvik dubbel nollställning
-            setUser(null); setProfile(null); setProjects([]);
-        }
-      }
-    } finally {
-      // *** Anpassad logg i finally ***
-      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Entering finally block. Setting loading to false.`);
-      setLoading(false);
-    }
-  }, [retryCount, hasManuallyReloaded]); // Korrigerad beroendelista
-
-  // Effekt för att trigga datahämtning vid montering OCH vid context-trigger
-  useEffect(() => {
-    // *** Lägg till loggning för att spåra fetchData-instans ***
-    if (fetchDataRef.current && fetchDataRef.current !== fetchData) {
-      console.log('!!! Huvud-useEffect: fetchData function instance HAR ÄNDRATS!');
-    } else if (!fetchDataRef.current) {
-      console.log('--- Huvud-useEffect: fetchData ref initieras.');
-    } else {
-      console.log('--- Huvud-useEffect: fetchData function instance är STABIL.');
-    }
-    fetchDataRef.current = fetchData; // Uppdatera refen
-
-    console.log(`Huvud-useEffect körs. reloadTrigger: ${reloadTrigger}`);
-    // Anropa fetchData och skicka med info om det var triggern som orsakade det
-    // Vi kollar om reloadTrigger är > 0 för att veta om det är en *ny* trigger
-    // (antar att initialt värde är 0)
-    const isTriggered = reloadTrigger > 0; 
-    
-    // Nollställ state om det är en trigger-reload för att tvinga fram uppdatering
-    if (isTriggered) {
-        console.log('Context reload trigger detekterad, nollställer state före fetch.');
-        setLoading(true); // Visa laddning direkt
-        setError(null);
+        const projectData = projectDataResult || [];
+        console.log(`[fetchData] Hämtade ${projectData.length} projekt.`);
+        setProjects(projectData as Project[]);
+        saveCachedProjects(projectData as Project[]);
         setRetryCount(0);
-        setHasManuallyReloaded(false);
-        setUsedCachedData(false);
-        setProjects([]); // Rensa projektlistan för att säkerställa visuell uppdatering
+        // setHasManuallyReloaded(false); // Ta bort om manuell reload tas bort
+
+    } catch (err: any) {
+        console.error("[fetchData] Fel vid hämtning av projektdata för inloggad användare:", err);
+        setError(err.message || 'Kunde inte hämta projektdata.');
+        // Fallback till cache vid fel?
+        const cachedProjects = getCachedProjects();
+        if (cachedProjects) {
+            console.warn('[fetchData] Använder cachade projekt pga fel.');
+            setProjects(cachedProjects);
+            setUsedCachedData(true);
+        } else {
+            setProjects([]); // Nollställ om ingen cache finns
+        }
+    } finally {
+        console.log("[fetchData] Entering finally block.");
+        setLoadingData(false);
+    }
+  // Beroende: Kör om när user-objektet från context ändras
+  }, [user, getCachedProjects, saveCachedProjects]); 
+
+  // --- Anpassad useEffect för att anropa fetchData --- 
+  useEffect(() => {
+    // Vänta tills AuthProvider har kollat klart auth-status
+    if (loadingAuth) {
+      console.log("[Main useEffect] Väntar på att AuthProvider ska bli klar...");
+      return; // Gör ingenting förrän auth är klar
     }
 
-    fetchData(isTriggered);
+    console.log("[Main useEffect] AuthProvider klar, anropar fetchData.");
+    fetchData();
 
-  }, [reloadTrigger, fetchData]); // Lägg till fetchData som beroende här
+  // Beroenden: Kör när auth är klar, eller när fetchData-funktionen ändras (pga user ändras)
+  }, [loadingAuth, fetchData]);
 
-  // Effekt för preview-data (när utloggad)
+  // --- Anpassad useEffect för preview-data --- 
   useEffect(() => {
-    if (user !== null || loading) return; 
+    // Kör bara om auth är klar OCH ingen användare finns
+    if (loadingAuth || user) { 
+        // Om auth laddar, eller om användare finns, gör inget här.
+        // Om användare finns och sen loggar ut, kommer main useEffect/fetchData hantera det.
+        if (previewProjects.length > 0 || previewQuotes.length > 0) {
+             // Rensa preview om användare loggar in
+             console.log("[Preview useEffect] Användare finns eller auth laddar, rensar preview.");
+             setPreviewProjects([]);
+             setPreviewQuotes([]);
+        }
+        return; 
+    }
 
+    // Nu vet vi: loadingAuth är false OCH user är null
     const fetchPreviewData = async () => {
-      console.log("Kör fetchPreviewData..."); // Logga start
-      setPreviewLoading(true); setPreviewError(null);
-      try {
-        console.log("Hämtar preview-projekt...");
-        const { data: projectData, error: projectsError } = await supabase
-          .from('projects')
-          .select('id, title, category, client_name, area, gross_floor_area, start_date, tender_document_url, building_image_url')
-          .limit(3);
+        // ... (befintlig kod för fetchPreviewData, ingen ändring behövs här) ...
+         console.log("Kör fetchPreviewData..."); 
+         setPreviewLoading(true); setPreviewError(null);
+         try {
+            console.log("Hämtar preview-projekt...");
+            const { data: projectData, error: projectsError } = await supabase
+             .from('projects')
+             .select('id, title, category, client_name, area, gross_floor_area, start_date, tender_document_url, building_image_url')
+             .limit(3);
         
-        // Logga specifikt projekt-felet
-        if (projectsError) {
-            console.error("Fel vid hämtning av preview-projekt:", projectsError);
-            throw new Error(`Projektfel: ${projectsError.message}`); 
-        }
-        console.log(`Hämtade ${projectData?.length ?? 0} preview-projekt.`);
-        setPreviewProjects(projectData || []);
+           if (projectsError) {
+               console.error("Fel vid hämtning av preview-projekt:", projectsError);
+               throw new Error(`Projektfel: ${projectsError.message}`); 
+           }
+           console.log(`Hämtade ${projectData?.length ?? 0} preview-projekt.`);
+           setPreviewProjects(projectData || []);
 
-        const projectIds = (projectData || []).map(p => p.id).filter(Boolean);
-        if (projectIds.length > 0) {
-          console.log("Hämtar preview-offerter för projekt-IDs:", projectIds);
-          const { data: quoteData, error: quotesError } = await supabase
-            .from('quotes').select('id, project_id, contractor_type').in('project_id', projectIds);
+           const projectIds = (projectData || []).map(p => p.id).filter(Boolean);
+           if (projectIds.length > 0) {
+             console.log("Hämtar preview-offerter för projekt-IDs:", projectIds);
+             const { data: quoteData, error: quotesError } = await supabase
+               .from('quotes').select('id, project_id, contractor_type').in('project_id', projectIds);
             
-          // Logga specifikt offert-felet
-          if (quotesError) {
-            console.error("Fel vid hämtning av preview-offerter:", quotesError);
-            throw new Error(`Offertfel: ${quotesError.message}`);
-          }
-          console.log(`Hämtade ${quoteData?.length ?? 0} preview-offerter.`);
-          setPreviewQuotes(quoteData || []);
-        } else {
-          console.log("Inga projekt-IDs att hämta offerter för.");
-          setPreviewQuotes([]);
-        }
-      } catch (err: any) {
-        // Förbättrad loggning i catch
-        console.error("Allvarligt fel i fetchPreviewData:", err);
-        setPreviewError(err.message || 'Kunde inte ladda förhandsgranskning på grund av ett oväntat fel.');
-      } finally {
-        console.log("fetchPreviewData finally block, sätter previewLoading till false.");
-        setPreviewLoading(false);
-      }
+             if (quotesError) {
+               console.error("Fel vid hämtning av preview-offerter:", quotesError);
+               throw new Error(`Offertfel: ${quotesError.message}`);
+             }
+             console.log(`Hämtade ${quoteData?.length ?? 0} preview-offerter.`);
+             setPreviewQuotes(quoteData || []);
+           } else {
+             console.log("Inga projekt-IDs att hämta offerter för.");
+             setPreviewQuotes([]);
+           }
+         } catch (err: any) {
+            console.error("Allvarligt fel i fetchPreviewData:", err);
+            setPreviewError(err.message || 'Kunde inte ladda förhandsgranskning på grund av ett oväntat fel.');
+         } finally {
+            console.log("fetchPreviewData finally block, sätter previewLoading till false.");
+            setPreviewLoading(false);
+         }
     };
     fetchPreviewData();
-  }, [user, loading]); // Beroenden är korrekta
+  // Beroenden: Kör när auth är klar eller user ändras (blir null)
+  }, [loadingAuth, user]); 
 
   // --- Preview useMemo ---
   const offerCountByProject = useMemo(() => {
@@ -326,49 +221,14 @@ export default function StartPage() {
   }, [previewQuotes]);
 
   // --- Renderingslogik ---
-  if (loading && projects.length === 0 && !usedCachedData) {
-    // Visa fullständig laddningsindikator endast om vi inte har något alls att visa
-    return <Loading />; // Antag att Loading komponenten finns globalt eller importeras
+  if (loadingAuth) {
+    return <Loading />; 
   }
 
-  // Felhantering (behåll den förbättrade från tidigare)
-  if (error && !usedCachedData) {
-    const isSessionError = error.toLowerCase().includes('session') || error.toLowerCase().includes('logga in');
-    return (
-      <div className="min-h-[60vh] flex flex-col justify-center items-center">
-        <div className="bg-white p-6 rounded-lg shadow-md text-center max-w-md">
-          {/* Felikon och text */}
-          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h2 className="text-xl font-semibold mb-2">{isSessionError ? 'Sessionsproblem' : 'Problem vid hämtning'}</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          {!isSessionError && (
-              <button 
-                onClick={handleManualReload} 
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                disabled={loading} 
-              >
-                {loading ? 'Laddar...' : 'Försök igen'}
-              </button>
-          )}
-          {isSessionError && (
-              <Link href="/login">
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
-                      Logga in
-                  </button>
-              </Link>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Om ingen användare, visa den publika startsidan (Preview)
+  // Användaren är inte inloggad (auth klar, user är null), visa Preview
   if (!user) {
     return (
-      <div className="bg-white min-h-screen"> {/* Ändrad från gradient till vit bakgrund */}
-
+      <div className="bg-white min-h-screen">
         {/* Välkomstsektion */}
         <section className="text-center py-12 px-4 sm:px-6 lg:px-8">
           {/* Uppdaterad välkomsttext */}
@@ -517,11 +377,30 @@ export default function StartPage() {
     );
   }
 
+  // Nu vet vi: Auth klar, user finns. Visa inloggat läge.
+  // Visa laddning för projektdata om det behövs
+  if (loadingData && projects.length === 0 && !usedCachedData) {
+    return <Loading />; // Eller en mindre påträngande laddningsindikator
+  }
+
+  // Felhantering för projektdata (om auth lyckades men projekt misslyckades)
+  if (error && !usedCachedData) {
+    return (
+      <div className="min-h-[60vh] flex flex-col justify-center items-center">
+        <div className="bg-white p-6 rounded-lg shadow-md text-center max-w-md">
+          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h2 className="text-xl font-semibold mb-2">Problem vid hämtning</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+        </div>
+      </div>
+    );
+  }
+  
   // Inloggad användare - Visa projektöversikten
-  const isAdmin = profile?.is_admin || false;
   return (
     <div className="py-8">
-      {/* Header för projektöversikten */}
       <div className="flex justify-between items-center mb-6 px-4 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-bold">Projektöversikt</h1>
         {isAdmin && (
@@ -542,50 +421,43 @@ export default function StartPage() {
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
               </svg>
               <span>Visar senast sparad data.</span>
-              <button 
-                onClick={handleManualReload} 
-                className="underline text-blue-600 hover:text-blue-800 font-medium" 
-                disabled={loading} // Inaktivera under laddning
-              >
-                {loading ? 'Uppdaterar...' : 'Uppdatera nu'}
-              </button>
             </p>
           </div>
         </div>
       )}
 
-      {/* Felmeddelande visas här om `error` finns OCH `usedCachedData` är true */}
+      {/* Felmeddelande om cache används */}
       {error && usedCachedData && (
-          <div className="px-4 sm:px-6 lg:px-8 mb-4">
-              <div className="col-span-full bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-800">
-                  <p>Kunde inte hämta senaste data. Visar lagrad information. Fel: {error}</p> {/* Visa felet för felsökning */}
-              </div>
+        <div className="px-4 sm:px-6 lg:px-8 mb-4">
+          <div className="col-span-full bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-800">
+            <p>Kunde inte hämta senaste data. Visar lagrad information. Fel: {error}</p>
           </div>
+        </div>
       )}
 
-      {/* Fall för inga projekt (antingen tomt eller efter misslyckad laddning utan cache) */}
-      {!loading && projects.length === 0 && !error && (
-         <div className="text-center py-10 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 mx-4 sm:mx-6 lg:mx-8">
-           <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-           </svg>
-           <h3 className="mt-2 text-sm font-semibold text-gray-900">Inga projekt</h3>
-           <p className="mt-1 text-sm text-gray-500">
-             {isAdmin ? 'Kom igång genom att skapa ett nytt projekt.' : 'Du har inte blivit tillagd i några projekt än, eller så finns inga projekt att visa.'}
-           </p>
-           {isAdmin && (
-              <div className="mt-6">
-                 <Link href="/projects/new">
-                   <button type="button" className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                     <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                       <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                     </svg>
-                     Skapa nytt projekt
-                   </button>
-                 </Link>
-               </div>
-           )}
-         </div>
+      {/* Inga projekt */}
+      {!loadingData && projects.length === 0 && !error && (
+        <div className="text-center py-10 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 mx-4 sm:mx-6 lg:mx-8">
+          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <h3 className="mt-2 text-sm font-semibold text-gray-900">Inga projekt</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {isAdmin ? 'Kom igång genom att skapa ett nytt projekt.' : 'Du har inte blivit tillagd i några projekt än, eller så finns inga projekt att visa.'}
+          </p>
+          {isAdmin && (
+            <div className="mt-6">
+              <Link href="/projects/new">
+                <button type="button" className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                  <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                  Skapa nytt projekt
+                </button>
+              </Link>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Projektlistan */}
@@ -593,10 +465,8 @@ export default function StartPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4 sm:px-6 lg:px-8">
           {projects.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`} className="block border rounded-lg shadow hover:shadow-md transition-shadow bg-white overflow-hidden group h-full flex flex-col">
-              {/* Projektkortets innehåll */}
               <div className="flex-grow flex">
                  <div className="p-4 flex-grow w-1/2 flex flex-col">
-                    {/* Titel och detaljer */}
                     <h3 className="text-lg font-semibold mb-1 truncate" title={project.title}>{project.title}</h3>
                     {project.area && (
                        <p className="text-sm text-gray-700 mb-1 truncate" title={`Område: ${project.area}`}>
@@ -634,7 +504,6 @@ export default function StartPage() {
                       </div>
                     )}
                  </div>
-                 {/* Bild eller placeholder */}
                  <div className="w-1/2 flex-shrink-0 relative min-h-[150px]">
                     {project.building_image_url ? (
                       <Image

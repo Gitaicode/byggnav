@@ -1,125 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
-import type { Session, User } from '@supabase/supabase-js';
 import { useRouter, usePathname } from 'next/navigation';
-import { usePageReload } from '@/contexts/PageReloadContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Header() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
+  const { user, isAdmin, loadingAuth, session } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { triggerReload } = usePageReload();
-
-  const fetchProfileAndSetAdmin = async (user: User | null) => {
-    if (!user) {
-      setIsAdmin(false);
-      return;
-    }
-    try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error('[Header] Error fetching profile:', error);
-        setIsAdmin(false);
-      } else {
-        setIsAdmin(profile?.is_admin ?? false);
-      }
-    } catch (e) {
-        console.error('[Header] Exception fetching profile:', e);
-        setIsAdmin(false);
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    const fetchInitialData = async () => {
-      try {
-        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error("[Header] Session fetch error:", sessionError);
-          throw sessionError;
-        }
-        
-        if (isMounted) {
-          setSession(initialSession);
-          
-          if (initialSession?.user) {
-            try {
-              await fetchProfileAndSetAdmin(initialSession.user);
-            } catch (profileError) {
-              console.error("[Header] Profile fetch error:", profileError);
-              // Fortsätt ändå men markera inte som admin
-              setIsAdmin(false);
-            }
-          } else {
-            setIsAdmin(false);
-          }
-          
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("[Header] Initial fetch error:", error);
-        if (isMounted) {
-          if (retryCount < maxRetries) {
-            console.log(`[Header] Retrying fetch (${retryCount + 1}/${maxRetries})...`);
-            retryCount++;
-            // Använd exponentiell backoff för återförsök
-            setTimeout(fetchInitialData, 1000 * Math.pow(2, retryCount));
-          } else {
-            console.error("[Header] Max retries reached, giving up.");
-            setSession(null);
-            setIsAdmin(false);
-            setLoading(false);
-          }
-        }
-      }
-    };
-    
-    fetchInitialData();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      console.log('[Header] Auth state changed:', event, currentSession?.user?.id || 'ingen användare');
-      if (isMounted) {
-        setSession(currentSession);
-        
-        try {
-          await fetchProfileAndSetAdmin(currentSession?.user ?? null);
-        } catch (error) {
-          console.error("[Header] Profile fetch error during auth change:", error);
-          setIsAdmin(false);
-        }
-        
-        if (loading) setLoading(false);
-        
-        if (event === 'SIGNED_OUT') {
-          if (pathname !== '/login' && pathname !== '/register') {
-            console.log('[Header] SIGNED_OUT, navigerar till /login från', pathname);
-            router.push('/login');
-          }
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      authListener?.subscription.unsubscribe();
-    };
-  }, [router, pathname]);
 
   const handleLogout = async () => {
-    setLoading(true);
     await supabase.auth.signOut();
     if (pathname !== '/login') {
         router.push('/login');
@@ -128,9 +20,7 @@ export default function Header() {
 
   const handleHomeNavigation = (e: React.MouseEvent) => {
     if (pathname === '/') {
-      e.preventDefault();
-      console.log('Är på /, anropar triggerReload via context');
-      triggerReload();
+      console.log('Navigerar till / (är redan där, låter Link fungera)');
     } else {
       console.log('Navigerar till / via Link');
     }
@@ -147,11 +37,11 @@ export default function Header() {
           ByggNav
         </Link>
         <nav>
-          {loading ? (
+          {loadingAuth ? (
              <div className="h-6 w-20 bg-gray-300 rounded animate-pulse"></div>
-          ) : session ? (
+          ) : user ? (
             <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600 hidden sm:inline">{session.user.email}</span>
+                <span className="text-sm text-gray-600 hidden sm:inline">{user.email}</span>
                 {isAdmin && (
                   <Link href="/admin/registrera-email" className="text-sm text-purple-600 hover:text-purple-800 hover:underline">
                     Hantera Email
