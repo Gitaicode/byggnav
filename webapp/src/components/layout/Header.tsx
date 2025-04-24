@@ -20,7 +20,8 @@ export default function Header() {
 
   const handleHomeNavigation = (e: React.MouseEvent) => {
     if (pathname === '/') {
-      console.log('Navigerar till / (är redan där, låter Link fungera)');
+      console.log('Är redan på /, förhindrar navigation och gör inget extra.');
+      e.preventDefault();
     } else {
       console.log('Navigerar till / via Link');
     }

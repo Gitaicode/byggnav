@@ -73,11 +73,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
       async (_event, currentSession) => {
         if (!isMounted) return;
 
-        const currentUser = currentSession?.user ?? null;
-        console.log('[AuthProvider] Auth state changed, event:', _event, 'user:', currentUser?.id);
-        setSession(currentSession);
-        setUser(currentUser);
-        await fetchProfileAndSetAdmin(currentUser); // Hämta profil vid ändring
+        const newUser = currentSession?.user ?? null;
+        const newSession = currentSession ?? null;
+
+        // *** OPTIMIZATION: Only update state if user/session actually changes ***
+        let userChanged = false;
+        if (newUser?.id !== user?.id) {
+          console.log(`[AuthProvider] User changed: ${user?.id} -> ${newUser?.id}`);
+          setUser(newUser);
+          setSession(newSession);
+          userChanged = true;
+        } else if (newSession?.access_token !== session?.access_token) {
+          // Update session if token changed, but user is the same
+          console.log('[AuthProvider] Session token updated for same user.');
+          setSession(newSession);
+          // DON'T set user again if ID is the same
+        }
+
+        console.log('[AuthProvider] Auth state changed, event:', _event, 'user:', newUser?.id);
+        
+        // *** OPTIMIZATION: Only fetch profile if the user actually changed ***
+        if (userChanged) {
+            console.log('[AuthProvider] User ID changed, fetching profile...');
+            await fetchProfileAndSetAdmin(newUser);
+        } else {
+             console.log('[AuthProvider] User ID same or null, skipping profile fetch on this event.');
+        }
+        
         // Se till att loading är false efter den första sessionhämtningen
         if (loadingAuth) {
            setLoadingAuth(false);
