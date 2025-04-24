@@ -102,9 +102,9 @@ export default function StartPage() {
 
     try {
       // 1. Get User
-      console.log("[fetchData] Attempting supabase.auth.getUser()...");
+      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting supabase.auth.getUser()...`);
       const { data: { user: currentUser }, error: getUserError } = await supabase.auth.getUser();
-      console.log("[fetchData] getUser() completed. Error:", getUserError, "User:", currentUser);
+      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] getUser() completed. Error:`, getUserError, "User:", currentUser);
 
       if (getUserError) {
         console.error("[fetchData] Supabase getUser error:", getUserError);
@@ -140,14 +140,16 @@ export default function StartPage() {
       // 2. Get Profile
       let fetchedProfileData: Profile | null = null;
       try {
+        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch profile for user: ${currentUser.id}`);
         const { data: profileDataResult, error: profileError } = await supabase
           .from('profiles').select('id, is_admin').eq('id', currentUser.id).single(); // Använd currentUser
         if (profileError) throw profileError;
         if (!profileDataResult) throw new Error('Kunde inte hitta användarprofil.');
         fetchedProfileData = profileDataResult;
         setProfile(fetchedProfileData);
+        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Profile fetched successfully:`, fetchedProfileData);
       } catch (profileErr: any) {
-        console.error("Fel vid hämtning av profil:", profileErr);
+        console.error("[fetchData] Fel vid hämtning av profil:", profileErr);
         const cachedProjects = getCachedProjects();
         if (cachedProjects && !isTriggeredByReload) { // Använd inte cache vid triggerReload
           console.warn('Profilhämtning misslyckades, använder cachade projekt.');
@@ -160,6 +162,7 @@ export default function StartPage() {
       
       // 3. Get Projects
       try {
+        console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch projects...`);
         const { data: projectDataResult, error: projectsError } = await supabase
           .from('projects')
           .select('id, title, description, status, created_at, updated_at, category, created_by, client_name, tender_document_url, building_image_url, area, gross_floor_area, start_date')
@@ -186,7 +189,7 @@ export default function StartPage() {
              setProjects([]); saveCachedProjects([]); setRetryCount(0);
           }
         } else {
-          console.log(`Hämtade ${projectData.length} projekt.`);
+          console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Projects fetched successfully. Count: ${projectData.length}`);
           setProjects(projectData as Project[]); saveCachedProjects(projectData as Project[]);
           setRetryCount(0); setHasManuallyReloaded(false);
         }
@@ -200,12 +203,13 @@ export default function StartPage() {
           setProjects(cachedProjects); setUsedCachedData(true); setLoading(false);
           return;
         } else {
+          console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Attempting to fetch projects after profile error...`);
           throw new Error(projectErr.message || 'Kunde inte hämta projekt.');
         }
       }
       
     } catch (err: any) {
-      console.error("[fetchData] Caught error in main try block:", err);
+      console.error(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Caught error in main try block:`, err);
       if (!error && !(err.message.includes('session') || err.message.includes('logga in'))) {
             setError(err.message || 'Ett oväntat fel uppstod.');
       }
@@ -220,8 +224,8 @@ export default function StartPage() {
         }
       }
     } finally {
-      // *** Add explicit log here ***
-      console.log("[fetchData] Entering finally block. Setting loading to false.");
+      // *** Anpassad logg i finally ***
+      console.log(`[fetchData ${isTriggeredByReload ? 'RELOAD' : 'INITIAL'}] Entering finally block. Setting loading to false.`);
       setLoading(false);
     }
   }, [retryCount, hasManuallyReloaded]); // Korrigerad beroendelista
